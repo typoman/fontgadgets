@@ -1,6 +1,10 @@
 from fontParts.fontshell.features import RFeatures
 from fontTools.feaLib.parser import Parser
 from fontTools.feaLib.ast import *
+from pathlib import PurePath
+from ufo2ft.featureCompiler import FeatureCompiler
+from collections import OrderedDict
+import os
 from io import StringIO
 
 
@@ -521,3 +525,57 @@ def subset(features, glyphsToKeep):
     return featureParser.featureFile
 
 RFeatures.subset = subset
+
+def getIncludedFilesPaths(features, absolutePaths=True):
+    """
+    Returns paths of included feature files.
+    If absoulutePaths is True, the abs path of the included files will be returned.
+    """
+    font = features.font
+    ufoPath = features.font.path
+    ufoName = PurePath(ufoPath).stem
+    ufoRoot = PurePath(ufoPath).parent
+    featxt = features.text or ""
+    buf = StringIO(featxt)
+    buf.name = os.path.join(ufoPath, "features.fea")
+    parser = Parser(buf, set(font.keys()), followIncludes=False)
+    includeFiles = set()
+    for s in parser.parse().statements:
+        if isinstance(s, IncludeStatement):
+            path = os.path.join(ufoRoot, s.filename)
+            normalPath = os.path.normpath(path)
+            if os.path.exists(normalPath):
+                if absolutePaths:
+                    includeFiles.add(normalPath)
+                else:
+                    includeFiles.add(s.filename)
+            else:
+                print(f"{ufoName} | Feature file doesn't exist in:\n{normalPath}")
+    return includeFiles
+
+RFeatures.getIncludedFilesPaths = getIncludedFilesPaths
+
+class GPOSCompiler(FeatureCompiler):
+    """
+    overrides ufo2ft to exclude ufo existing features in the generated GPOS.
+    """
+
+    def setupFeatures(self):
+        featureFile = FeatureFile()
+        for writer in self.featureWriters:
+            writer.write(self.ufo, featureFile, compiler=self)
+        self.features = featureFile.asFea()
+
+def generateGPOS(features):
+    """
+    Generates mark, kern features using ufo2ft.
+    """
+    font = features.font
+    skipExport = font.lib.get("public.skipExportGlyphs", [])
+    glyphOrder = (gn for gn in font.glyphOrder if gn not in skipExport)
+    featureCompiler = GPOSCompiler(font)
+    featureCompiler.glyphSet = OrderedDict((gn, font[gn]) for gn in glyphOrder)
+    featureCompiler.compile()
+    return featureCompiler.features
+
+RFeatures.generateGPOS = generateGPOS
