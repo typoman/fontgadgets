@@ -1,0 +1,11 @@
+# ask frederik should the methods be added to fontpart objects or defcon
+# font
+- scale
+
+# glyph
+- scale
+
+# features
+getGlyphALternates
+- filtered by feature tag
+- observer for changes in the included feature files that makes the RFeatures dirty

@@ -1,14 +1,55 @@
-from fontParts.fontshell.features import RFeatures
 from fontTools.feaLib.parser import Parser
 from fontTools.feaLib.ast import *
+from warnings import warn
+from copy import deepcopy
 from pathlib import PurePath
 from ufo2ft.featureCompiler import FeatureCompiler
 from collections import OrderedDict
+from fontGadgets.tools import fontMethod, fontCachedMethod
 import os
 from io import StringIO
 
+"""
+- add sctipt and language tags to the rules and glyphs
+"""
 
-class ParseFeatureFile():
+class GlyphFeautres():
+
+    def __init__(self, glyph):
+        self._glyph = glyph
+        self.sourceGlyphs = {}  # g.name: AlternateSubstStatement...
+        self.targetGlyphs = {}  # g.name: AlternateSubstStatement...
+
+    @property
+    def featureTags(self):
+        """
+        returns a set of tags
+        """
+        tags = set()
+        for gs, sublist in self._glyph.features.sourceGlyphs.items():
+            for sub in sublist:
+                tags.update(sub.features)
+        return tags
+
+    def _getLookups(self):
+        # fetch lookups objects from the statements
+        pass
+
+    def _getLanguages(self):
+        pass
+
+    def _getScripts(slef):
+        pass
+
+    @property
+    def glyph(self):
+        return self._glyph
+
+@fontMethod
+def features(glyph):
+    return glyph.font.features.parser[glyph.name]
+
+class ParsedFeatureFile():
 
     gsubGlyphsAttrs = {
         # one to one, alternate shapes of a glyph
@@ -32,30 +73,36 @@ class ParseFeatureFile():
         SinglePosStatement: ('pos', ),
     }
 
-    statementTypes = list(gsubGlyphsAttrs.keys())
-    statementTypes.extend(gposGlyphsAttrs)
-    statementTypes = tuple(statementTypes)
+    rules = list(gsubGlyphsAttrs.keys())
+    rules.extend(gposGlyphsAttrs)
+    rules = tuple(rules)
 
     def __init__(self, font):
         featuresRawText = StringIO(font.features.text)
         self._font = font
         featuresRawText.name = self._font.path
-        parser = Parser(featuresRawText, font.keys())
+        parser = Parser(featuresRawText)
         self.featureFile = parser.parse()
         self.lookups = {}  # lookupName: astLookupBlock
         self.classes = {}  # className: astGlyphClassDefinition
         self.features = {}  # featureTag: [astFeatureBlock, ]
-        self._statements = {}  # statementType: [astObject,...]
+        self.languagesReferences = {}  # languageTag: ast
+        self.scriptReferences = {}  # scriptTag: ast
+        self._rules = {}  # statementType: [astObject,...]
         self._currentFeatureTag = None
         self._currentLookup = None
+        self._currentLanguageTag = None
+        self._currentScriptTag = None
+        self._glyphFeatures = {}
         self._currentElement = self.featureFile
         self._parseStatements()
+        self._currentElement = None
 
     def _parseElement(self, element):
         self._currentElement = element
         if isinstance(element, FeatureBlock):
-            self.features.setdefault(element.name, []).append(element)
             self._currentFeatureTag = element.name
+            self.features.setdefault(self._currentFeatureTag, []).append(element)
             self._parseStatements()
             self._currentFeatureTag = None
         elif isinstance(element, LookupBlock):
@@ -63,7 +110,6 @@ class ParseFeatureFile():
             self._currentLookup = element
             element.features = set()
             self._parseStatements()
-            self._currentLookup = None
             if self._currentFeatureTag is not None:
                 element.features.add(self._currentFeatureTag)
         elif isinstance(element, LookupReferenceStatement):
@@ -71,24 +117,65 @@ class ParseFeatureFile():
                 element.lookup.features.add(self._currentFeatureTag)
         elif isinstance(element, GlyphClassDefinition):
             self.classes[element.name] = element
-        elif isinstance(element, self.statementTypes):
-            self._statements.setdefault(type(element), []).append(element)
+        elif isinstance(element, self.rules):
+            self._rules.setdefault(type(element), []).append(element)
             element.features = set()
             if self._currentFeatureTag is not None:
                 element.features.add(self._currentFeatureTag)
             element.lookup = None
             if self._currentLookup is not None:
                 element.lookup = self._currentLookup
+            self._parseStatementAttributes()
+        elif isinstance(element, LanguageStatement):
+            self.languagesReferences.setdefault(element.language, []).append(element)
+            self._currentLanguageTag = element.language
+        elif isinstance(element, ScriptStatement):
+            self.scriptReferences.setdefault(element.script, []).append(element)
+            self._currentScriptTag = element.script
+
+    def __getitem__(self, glyphName):
+        if glyphName in self._glyphFeatures:
+            return self._glyphFeatures[glyphName]
+        try:
+            self._glyphFeatures[glyphName] = GlyphFeautres(self._font[glyphName])
+        except KeyError:
+            warn(f"Ignoring the missing glyph `{glyphName}` in the features, statement:\n{str(self._currentElement)}")
+            return
+        return self._glyphFeatures[glyphName]
 
     def _parseStatements(self):
-        currentElement = self._currentElement
-        for element in currentElement.statements:
+        for element in self._currentElement.statements:
             self._parseElement(element)
-        self._currentElement = currentElement
+        self._currentLookup = None
+        self._currentLanguageTag = None
+        self._currentScriptTag = None
 
-    def _iterStatementAttrs(self):
+    def _parseStatementAttributes(self):
         # add nested features, lookups, classes, statements attr to RGlyph objects
-        pass
+        statement = self._currentElement
+        if type(statement) in self.gsubGlyphsAttrs:
+            source, target = self._getGsubStatementGlyphs()
+            if isinstance(statement, (AlternateSubstStatement, SingleSubstStatement, ReverseChainSingleSubstStatement)):
+                for sg, tg in zip(source, target):
+                    self._addGsubAttributesToGlyph([sg], [tg])
+            elif isinstance(statement, (LigatureSubstStatement, MultipleSubstStatement)):
+                self._addGsubAttributesToGlyph(source, target)
+
+    def _addGsubAttributesToGlyph(self, sourceGlyphs, targetGlyphs):
+        statement = self._currentElement
+        sourceGlyphs, targetGlyphs = tuple(sourceGlyphs), tuple(targetGlyphs)
+        for gn in targetGlyphs:
+            glyphFeatures = self[gn]
+            if glyphFeatures is not None:
+                glyphFeatures.sourceGlyphs.setdefault(sourceGlyphs, []).append(statement)
+        for gn in sourceGlyphs:
+            glyphFeatures = self[gn]
+            if glyphFeatures is not None:
+                glyphFeatures.targetGlyphs.setdefault(targetGlyphs, []).append(statement)
+
+    def _getGsubStatementGlyphs(self):
+        statement = self._currentElement
+        return [_convertToListOfGlyphNames(getattr(statement, a)) for a in self.gsubGlyphsAttrs[type(statement)]]
 
     def statementsByType(self, elementType, featureTags=set()):
         """
@@ -97,7 +184,7 @@ class ParseFeatureFile():
         """
         result = []
         featureTags = self._featureTags(featureTags)
-        for element in self._statements.get(elementType, []):
+        for element in self._rules.get(elementType, []):
             if element.features & featureTags:
                 result.append(element)
         return result
@@ -108,42 +195,9 @@ class ParseFeatureFile():
         else:
             return set(featureTags)
 
-    def glyphSetAlternates(self, glyphs, featureTags=set()):
-        """
-        Recursively fetch all the given glyphs alternates. Returns a dictionary:
-        alternateGlyph: set({featureTag1, featureTag1})
-        If you provide a featureTags argument, then only the statements within those
-        features will be reutrned.
-        """
-
-        alternates = {}
-        glyphSet = set(glyphs)
-        featureTags = self._featureTags(featureTags)
-        while True:
-            numAlternates = len(alternates)
-            glyphSet = glyphSet | alternates.keys()
-            for elementType, attributes in self.gsubGlyphsAttrs.items():
-                sourceGlyphsAttr, targetGlyphsAttr = attributes
-                for element in self._statements.get(elementType, []):
-                    sourceGlyphs = getattr(element, sourceGlyphsAttr)
-                    if set(_convertToListOfGlyphNames(sourceGlyphs)) & glyphSet:
-                        alternateGlyphs = _convertToListOfGlyphNames(
-                            getattr(element, targetGlyphsAttr))
-                        for g in alternateGlyphs:
-                            features = element.features
-                            if element.lookup is not None:
-                                features.update(element.lookup.features)
-                            alternates.setdefault(
-                                g, set()).update(element.features)
-            if len(alternates) == numAlternates:
-                break
-        for g, features in list(alternates.items()):
-            if not featureTags & features:
-                del alternates[g]
-        return alternates
-
-
 def _convertToListOfGlyphNames(e):
+    # we need to make all the glyph statement consistent because feaLib parser
+    # somtimes creates ast objects and sometimes string.
     if isinstance(e, str):
         return [e, ]
     if isinstance(e, GlyphName):
@@ -172,43 +226,16 @@ def _renameGlyphNames(e, trasnlateMap):
             _renameGlyphNames(e2, trasnlateMap)
     return e
 
-
-def parse(self):
-    """
-    Returns a feature parser object.
-    """
-    parsed = ParseFeatureFile(self.font)
-    return parsed
-
-RFeatures.parse = parse
-
-def glyphSetAlternates(features, glyphSet, featureTags=set()):
-    """
-    Recursively fetch all the given glyphs alternates. Returns a dictionary:
-    Returns: dict(alternateGlyph = set({featureTag1, featureTag1}))
-    If you provide a featureTags argument, then only the statements within those
-    features will be reutrned.
-
-    glyphSet: glyph names as an iterable
-    featureTags: feature tag names as an iterable
-    """
-    featureParser = features.parse()
-    return featureParser.glyphSetAlternates(glyphSet, featureTags)
-
-RFeatures.glyphSetAlternates = glyphSetAlternates
+@fontCachedMethod("Features.Changed")
+def parser(features):
+    return ParsedFeatureFile(features.font)
 
 #  subsetting
 """
 Todo:
 KNOWN BUGS:
-- Feature aalt doesn't get subset if the referenced features are non existent.
-    This is because the FeatureReferenceStatement don't point to the FeatureBlock
-    to check if they subset or not.
-- LanguageSystemStatement don't get subset because they don't belong to glyphs.
-- How to subset these objects:
-    FeatureReferenceStatement --> FeatureBlock.subset is None
-    LanguageSystemStatement --> Block.subset that contains relevant
-                        LanguageStatement, ScriptStatement is None
+- If these objects are not referenced, they should be removed:
+    Classes, LanguageSystemStatement, FeatureReferenceStatement
 """
 
 def _isRule(statement):
@@ -349,7 +376,7 @@ def chainContextStatementSubset(self, glyphsToKeep):
                     lookupStatements.append(s)
                 lookup.statements = lookupStatements
             if not lookup.isEmpty():
-                lookups.append(remainedLookups)
+                self.lookups.append(remainedLookups)
         if self.lookups:
             return self
 
@@ -408,14 +435,14 @@ def markMarkPosStatementSubset(self, glyphsToKeep):
         return self.subsetMarks(glyphsToKeep)
 
 def multipleSubstStatementSubset(self, glyphsToKeep):
-    if hastattr(self.glyph, 'glyphSet'):
+    if hasattr(self.glyph, 'glyphSet'):
         if self.glyph.subset(glyphsToKeep):
             return
     else:
         if self.glyph not in glyphsToKeep:
             return
     numTargetGlyphs = len(self.replacement.glyphSet())
-    self.replacement, self.prefix, self.suffix = _subsetGlyphSet([
+    self.replacement, self.prefix, self.suffix = _subsetGlyphs([
     self.replacement, self.prefix, self.suffix
     ], glyphsToKeep)
     if len(self.replacement.glyphSet()) == numTargetGlyphs:
@@ -516,16 +543,18 @@ PairPosStatement.numInputGlyphs = numInputGlyphs
 SingleSubstStatement.numInputGlyphs = numInputGlyphs
 SinglePosStatement.numInputGlyphs = numInputGlyphs
 
-def subset(features, glyphsToKeep):
+@fontCachedMethod("Features.Changed")
+def subset(features, glyphsToKeep=None):
     """
     Return a new features text file with features limited to the glyphsToKeep
     """
-    featureParser = features.parse()
-    featureParser.featureFile.subset(glyphsToKeep)
-    return featureParser.featureFile
+    if glyphsToKeep is None:
+        glyphsToKeep = features.font.keys()
+    featureFile = features.parser.featureFile
+    featureFile.subset(glyphsToKeep)
+    return featureFile
 
-RFeatures.subset = subset
-
+@fontCachedMethod("Features.Changed")
 def getIncludedFilesPaths(features, absolutePaths=True):
     """
     Returns paths of included feature files.
@@ -553,8 +582,6 @@ def getIncludedFilesPaths(features, absolutePaths=True):
                 print(f"{ufoName} | Feature file doesn't exist in:\n{normalPath}")
     return includeFiles
 
-RFeatures.getIncludedFilesPaths = getIncludedFilesPaths
-
 class GPOSCompiler(FeatureCompiler):
     """
     overrides ufo2ft to exclude ufo existing features in the generated GPOS.
@@ -566,16 +593,14 @@ class GPOSCompiler(FeatureCompiler):
             writer.write(self.ufo, featureFile, compiler=self)
         self.features = featureFile.asFea()
 
-def generateGPOS(features):
+@fontCachedMethod("Glyph.AnchorsChanged", "Groups.Changed", "Kerning.Changed", "Layer.GlyphAdded", "Layer.GlyphDeleted")
+def GPOS(font):
     """
     Generates mark, kern features using ufo2ft.
     """
-    font = features.font
     skipExport = font.lib.get("public.skipExportGlyphs", [])
     glyphOrder = (gn for gn in font.glyphOrder if gn not in skipExport)
     featureCompiler = GPOSCompiler(font)
     featureCompiler.glyphSet = OrderedDict((gn, font[gn]) for gn in glyphOrder)
     featureCompiler.compile()
     return featureCompiler.features
-
-RFeatures.generateGPOS = generateGPOS
