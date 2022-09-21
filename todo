@@ -1,6 +1,4 @@
-# ask frederik should the methods be added to fontpart objects or defcon
-# font
-- scale
+# In the fontemethod add undo if the environment is RF
 
 # glyph
 - scale

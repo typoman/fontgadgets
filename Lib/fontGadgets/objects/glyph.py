@@ -6,27 +6,38 @@ from fontTools.unicodedata import script_extension, script_name
 from fontPens.transformPointPen import TransformPointPen
 from fontTools.pens.t2CharStringPen import T2CharStringPen
 import booleanOperations
-from drawBot import BezierPath
+import logging
+logger = logging.getLogger(__name__)
+drawBotInstalled = False
+try:
+    from drawBot import BezierPath
+    drawBotInstalled = True
+except ImportError:
+    logger.warn('DrawBot not installed.')
 
 """
 todo:
 - For glyph types use features to find the glyph type.
 """
-@fontCachedMethod("Glyph.ContoursChanged", "Glyph.ComponentsChanged", "Component.BaseGlyphChanged")
-def getStroked(glyph, strokeWidth):
-    """
-    Adds a stroke around the glyph and returns a new glyph.
-    """
-    pen = CocoaPen(glyph.font)
-    glyph.draw(pen)
-    bezierPath = BezierPath(pen.path)
-    bezierPath.removeOverlap()
-    newPath = bezierPath.expandStroke(strokeWidth).removeOverlap()
-    union = newPath.union(bezierPath)
-    result = RGlyph()
-    p = result.getPen()
-    union.drawToPen(p)
-    return result
+PUA_CATEGORY = 'Zzzz'
+
+if drawBotInstalled:
+    @fontCachedMethod("Glyph.ContoursChanged", "Glyph.ComponentsChanged", "Component.BaseGlyphChanged")
+    def getStroked(glyph, strokeWidth):
+        """
+        Adds a stroke around the glyph and returns a new glyph.
+        """
+
+        pen = CocoaPen(glyph.font)
+        glyph.draw(pen)
+        bezierPath = BezierPath(pen.path)
+        bezierPath.removeOverlap()
+        newPath = bezierPath.expandStroke(strokeWidth).removeOverlap()
+        union = newPath.union(bezierPath)
+        result = RGlyph()
+        p = result.getPen()
+        union.drawToPen(p)
+        return result
 
 class DecomposePointPen(TransformPointPen):
 
@@ -91,7 +102,7 @@ def T2CharString(glyph):
 @fontCachedMethod("Glyph.ContoursChanged", "Glyph.ComponentsChanged", "Component.BaseGlyphChanged")
 def flattenedCopy(glyph):
     """
-    Decomposes and removeOverlaps
+    Decomposes and remove overlaps and returns a new glyph.
     """
     glyph = glyph.decomposedCopy
     contours = list(glyph.contours)
@@ -118,7 +129,8 @@ def isEmpty(glyph):
 
 @fontMethod
 def isRTL(glyph):
-    return unicodeBidiType(glyph.pseudoUnicodes[0]) == "R"
+    if glyph.pseudoUnicodes:
+        return unicodeBidiType(glyph.pseudoUnicodes[0]) == "R"
 
 @fontMethod
 def scripts(glyph):
@@ -185,26 +197,47 @@ def glyphTypeInterpreter(font):
 def isMark(glyph):
     return glyph.font.glyphTypeInterpreter.isMark(glyph.name)
 
-class UnicodesFromSubstitutions():
+class FontPseudoUnicodes():
 
     def __init__(self, font):
         self.font = font
-        self.glyph2UnicodesMap = {g.name: list(g.unicodes) for g in font if len(g.unicodes) != 0}
-        nonUnicodeGlyphs = [g for g in font if len(g.unicodes) == 0]
-        for g in nonUnicodeGlyphs:
-            self.addPseudeoUnicodes(g)
+        self.glyph2UnicodesMap = {}
+        for g in font:
+            if len(g.unicodes) != 0 and PUA_CATEGORY not in script_extension(chr(g.unicodes[0])):
+                self.glyph2UnicodesMap[g.name] = g.unicodes
+        for _addUnicodes in (self.unicodesFromGSUB, self.unicodesFromComposites):
+            numTargetGlyphs = -1
+            while numTargetGlyphs != len(self.nonUnicodeGlyphs):
+                numTargetGlyphs = len(self.nonUnicodeGlyphs)
+                for g in self.nonUnicodeGlyphs:
+                    _addUnicodes(g)
 
-    def addPseudeoUnicodes(self, glyph):
-        for gl in glyph.features.sourceGlyphs.keys():
+    @property
+    def nonUnicodeGlyphs(self):
+        return [g for g in self.font if g.name not in self.glyph2UnicodesMap]
+
+    def unicodesFromGSUB(self, glyph):
+        unicodes = []
+        for gl, sub in glyph.features.sourceGlyphs.items():
             for gn in gl:
-                if gn in self.glyph2UnicodesMap:
-                    self.glyph2UnicodesMap.setdefault(glyph.name, []).extend(self.glyph2UnicodesMap[gn])
-                else:
-                    self.addPseudeoUnicodes(self.font[gn])
+                unicodes.extend(self.glyph2UnicodesMap.get(gn, []))
+        if unicodes:
+            self.glyph2UnicodesMap[glyph.name] = unicodes
+
+    def unicodesFromComposites(self, glyph):
+        unicodes = []
+        if not unicodes:
+            for component in glyph.components:
+                unicodes.extend(self.glyph2UnicodesMap.get(component.baseGlyph, []))
+        if not unicodes:
+            for composite in self.font.componentReferences.get(glyph.name, []):
+                unicodes.extend(self.glyph2UnicodesMap.get(composite, []))
+        if unicodes:
+            self.glyph2UnicodesMap[glyph.name] = unicodes
 
 @fontCachedMethod("UnicodeData.Changed", "Features.Changed")
 def pseudoUnicodesMapping(font):
-    return UnicodesFromSubstitutions(font).glyph2UnicodesMap
+    return FontPseudoUnicodes(font).glyph2UnicodesMap
 
 @fontMethod
 def pseudoUnicodes(glyph):

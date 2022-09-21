@@ -100,7 +100,7 @@ class FontMethodsRegistrar():
             setattr(self.defconObject, self.funcName, self.funct)
             funcName = f"fp{self.funcName}"
             code = [f"def {funcName}{self.funcSignature}:"]
-            code.append(f"\treturn {self.args[0]}.naked().{self.funcName}({self.args[1:]})")
+            code.append(f"\treturn {self.args[0]}.naked().{self.funcName}({', '.join(self.args[1:])})")
             code.append(f"fontParts.fontshell.{self.args[0]}.{'R'+self.objectName}.{self.funcName} = {funcName}")
             exec("\n".join(code))
         else:

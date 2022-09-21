@@ -1,7 +1,10 @@
 from fontGadgets.tools import fontMethod
-from fontParts.fontshell import RFont
+from defcon import Font
+from collections import Counter
 import os
 import shutil
+from fontTools.designspaceLib import DesignSpaceDocument
+from ufonormalizer import normalizeUFO
 
 def _scaleGlyph(glyph, factor):
     with glyph.undo():
@@ -56,55 +59,81 @@ def scale(font, factor=1, layerNames=None, roundValues=True):
     font.changed()
 
 @fontMethod
-def subset(font, glyphsToKeep, path=None):
+def subset(font, glyphsToKeep, subsetName=None):
     """
-    Subsets and returns a copy of the font. If path is not provided, then
-    the subset ufo file will be saved on the disk next to the font.path.
+    Subsets and returns a copy of the font. `subsetName` will be a folder next to the ufo
+    where the subset font will be saved. If this argument is not provided then the most
+    common script name in the subset will be used for the folder name.
     """
+    if subsetName is None:
+        scripts = []
+        for g in glyphsToKeep:
+            scripts.extend(font[g].scripts)
+        scriptCounter = Counter(scripts)
+        subsetName = scriptCounter.most_common()[0][0]
 
-    if path is None:
-        path = os.path.normpath(font.path)
-        ufoStem, ufoExtension = os.path.splitext(path)
-        subsetUfoPath = '{}_subset{}'.format(ufoStem, ufoExtension)
-    shutil.copytree(path, subsetUfoPath)
-    subsetFont = RFont(subsetUfoPath)
+    subsetUfoPath = f'{font.folderPath}/{subsetName}/{font.fileName}'
+    shutil.copytree(font.path, subsetUfoPath)
+    subsetFont = Font(subsetUfoPath)
+    subsetFont.features.text = str(font.features.subset(tuple(glyphsToKeep)))
     glyphsToKeep = set(glyphsToKeep)
     glyphsToRemove = set(subsetFont.keys()) - glyphsToKeep
     componentReferences = subsetFont.componentReferences
 
     for glyphToRemove in glyphsToRemove:
-        if glyphToRemove in componentReferences:
-            decomposeList = componentReferences[glyphToRemove]
-            for glyphName in decomposeList:
-                if glyphName in subsetFont.keys():
-                    glyphToDecompose = subsetFont[glyphName]
-                    [c.decompose() for c in glyphToDecompose.components if c.baseGlyph == glyphToRemove]
-        if glyphToRemove in subsetFont:
-            del subsetFont[glyphToRemove]
+        decomposeList = componentReferences.get(glyphToRemove, [])
+        for glyphName in decomposeList:
+            if glyphName in subsetFont:
+                glyphToDecompose = subsetFont[glyphName]
+                for c in glyphToDecompose.components:
+                    if c.baseGlyph == glyphToRemove:
+                        glyphToDecompose.decomposeComponent(c)
+        for layer in subsetFont.layers:
+            if glyphToRemove in layer:
+                del layer[glyphToRemove]
 
-    newGlyphOrder = [gn for gn in subsetFont.lib['public.glyphOrder'] if gn in glyphsToKeep]
-    subsetFont.lib['public.glyphOrder'] = newGlyphOrder
-    if 'com.typemytype.robofont.sort' in subsetFont.lib.keys():
-        del(subsetFont.lib['com.typemytype.robofont.sort'])
+    subsetFont.lib['public.glyphOrder'] = [gn for gn in subsetFont.glyphOrder if gn in glyphsToKeep]
+    if 'com.typemytype.robofont.sort' in subsetFont.lib:
+        del subsetFont.lib['com.typemytype.robofont.sort']
 
     newGroups = {}
     for groupName, glyphList in subsetFont.groups.items():
         glyphList = [g for g in glyphList if g in glyphsToKeep]
         if glyphList:
             newGroups[groupName] = glyphList
-        subsetFont.groups.clear()
-        subsetFont.groups.update(newGroups)
+    subsetFont.groups.clear()
+    subsetFont.groups.update(newGroups)
 
     newKerning = {}
     for pair, value in subsetFont.kerning.items():
         if subsetFont.kerning.isKerningPairValid(pair):
             newKerning[pair] = value
 
-    subsetFont.features.text = str(font.features.subset(glyphsToKeep))
     subsetFont.kerning.clear()
     subsetFont.kerning.update(newKerning)
     subsetFont.save()
     return subsetFont
 
-def testInstall(font):
-    pass
+
+@fontMethod
+def fileName(font):
+    return os.path.basename(font.path)
+
+@fontMethod
+def folderPath(font):
+    return os.path.dirname(font.path)
+
+@fontMethod
+def designSpaces(font):
+    designSpaceFiles = {}
+    for filename in os.listdir(font.folderPath):
+        if filename.endswith(".designspace"):
+            designSpaceFile = DesignSpaceDocument.fromfile(os.path.join(font.folderPath, filename))
+            designSpaceFiles[designSpaceFile.path] = designSpaceFile
+    return designSpaceFiles
+
+@fontMethod
+def normalize(font, includedFeatures=True):
+    font.features.normalize(includedFeatures)
+    font.save()
+    normalizeUFO(font.path, onlyModified=False, writeModTimes=False)

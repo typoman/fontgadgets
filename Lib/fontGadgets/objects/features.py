@@ -2,7 +2,6 @@ from fontTools.feaLib.parser import Parser
 from fontTools.feaLib.ast import *
 from warnings import warn
 from copy import deepcopy
-from pathlib import PurePath
 from ufo2ft.featureCompiler import FeatureCompiler
 from collections import OrderedDict
 from fontGadgets.tools import fontMethod, fontCachedMethod
@@ -28,7 +27,7 @@ class GlyphFeautres():
         tags = set()
         for gs, sublist in self._glyph.features.sourceGlyphs.items():
             for sub in sublist:
-                tags.update(sub.features)
+                tags.update([f[0] for f in sub.features])
         return tags
 
     def _getLookups(self):
@@ -48,6 +47,12 @@ class GlyphFeautres():
 @fontMethod
 def features(glyph):
     return glyph.font.features.parser[glyph.name]
+
+@fontMethod
+def getFontToolsFeaturesParser(features, followIncludes=True):
+    buf = StringIO(features.text)
+    buf.name = features.font.path
+    return Parser(buf, followIncludes=followIncludes)
 
 class ParsedFeatureFile():
 
@@ -78,60 +83,80 @@ class ParsedFeatureFile():
     rules = tuple(rules)
 
     def __init__(self, font):
-        featuresRawText = StringIO(font.features.text)
         self._font = font
-        featuresRawText.name = self._font.path
-        parser = Parser(featuresRawText)
-        self.featureFile = parser.parse()
+        self.featureFile = font.features.getFontToolsFeaturesParser().parse()
         self.lookups = {}  # lookupName: astLookupBlock
         self.classes = {}  # className: astGlyphClassDefinition
         self.features = {}  # featureTag: [astFeatureBlock, ]
         self.languagesReferences = {}  # languageTag: ast
         self.scriptReferences = {}  # scriptTag: ast
+        self.classReferences = {}   # className: ast
+        self.featureReferences = {} # featureTag: ast
         self._rules = {}  # statementType: [astObject,...]
-        self._currentFeatureTag = None
-        self._currentLookup = None
-        self._currentLanguageTag = None
-        self._currentScriptTag = None
+        self._currentFeature = None
+        self._currentLanguage = None
+        self._currentScript = None
+        self._currentBlock = None
         self._glyphFeatures = {}
         self._currentElement = self.featureFile
         self._parseStatements()
+        for feaTag, feaRefList in self.featureReferences.items():
+            for feaRef in feaRefList:
+                feaRef.featureBlocks = self.features[feaTag]
         self._currentElement = None
 
-    def _parseElement(self, element):
-        self._currentElement = element
-        if isinstance(element, FeatureBlock):
-            self._currentFeatureTag = element.name
-            self.features.setdefault(self._currentFeatureTag, []).append(element)
+    def _parseElement(self, e):
+        self._currentElement = e
+        e.block = self._currentBlock
+        if isinstance(e, FeatureBlock):
+            self._currentFeature = e
+            self.features.setdefault(self._currentFeature.name, []).append(e)
             self._parseStatements()
-            self._currentFeatureTag = None
-        elif isinstance(element, LookupBlock):
-            self.lookups[element.name] = element
-            self._currentLookup = element
-            element.features = set()
+            self._currentFeature = None
+            self._currentLanguage = None
+            self._currentScript = None
+        elif isinstance(e, LookupBlock):
+            self.lookups[e.name] = e
             self._parseStatements()
-            if self._currentFeatureTag is not None:
-                element.features.add(self._currentFeatureTag)
-        elif isinstance(element, LookupReferenceStatement):
-            if self._currentFeatureTag is not None:
-                element.lookup.features.add(self._currentFeatureTag)
-        elif isinstance(element, GlyphClassDefinition):
-            self.classes[element.name] = element
-        elif isinstance(element, self.rules):
-            self._rules.setdefault(type(element), []).append(element)
-            element.features = set()
-            if self._currentFeatureTag is not None:
-                element.features.add(self._currentFeatureTag)
-            element.lookup = None
-            if self._currentLookup is not None:
-                element.lookup = self._currentLookup
+            self._assignTagReferences(e)
+        elif isinstance(e, LookupReferenceStatement):
+            self._assignTagReferences(e.lookup)
+        elif isinstance(e, GlyphClassDefinition):
+            self.classes[e.name] = e
+        elif isinstance(e, self.rules):
+            self._rules.setdefault(type(e), []).append(e)
+            self._assignTagReferences(e)
             self._parseStatementAttributes()
-        elif isinstance(element, LanguageStatement):
-            self.languagesReferences.setdefault(element.language, []).append(element)
-            self._currentLanguageTag = element.language
-        elif isinstance(element, ScriptStatement):
-            self.scriptReferences.setdefault(element.script, []).append(element)
-            self._currentScriptTag = element.script
+        elif isinstance(e, LanguageStatement):
+            self.languagesReferences.setdefault(e.language, []).append(e)
+            self._currentLanguage = e
+        elif isinstance(e, ScriptStatement):
+            self.scriptReferences.setdefault(e.script, []).append(e)
+            self._currentScript = e
+        elif isinstance(e, GlyphClassName):
+            self._assignClassReferences(e.glyphclass)
+        elif isinstance(e, FeatureReferenceStatement):
+            self.featureReferences.setdefault(e.featureName,  []).append(e)
+
+    def _assignTagReferences(self, e):
+        for attr in ('features', 'languages', 'scripts'):
+            if not hasattr(e, attr):
+                setattr(e, attr, {})
+        if self._currentFeature is not None:
+            key = (self._currentFeature.name, self._currentFeature.location)
+            e.features[key] = self._currentFeature
+        if self._currentScript is not None:
+            key = (self._currentScript.script, self._currentScript.location)
+            e.scripts[key] = self._currentScript
+        if self._currentLanguage is not None:
+            key = (self._currentLanguage.language, self._currentLanguage.location)
+            e.languages[key] = self._currentLanguage
+
+    def _assignClassReferences(self, e):
+        # this helps for subsetting when a class is not referenced anymore
+        if not hasattr(e, 'references'):
+            e.references = []
+        e.references.append(self._currentElement)
 
     def __getitem__(self, glyphName):
         if glyphName in self._glyphFeatures:
@@ -144,11 +169,14 @@ class ParsedFeatureFile():
         return self._glyphFeatures[glyphName]
 
     def _parseStatements(self):
+        block = self._currentBlock = self._currentElement
+        language = self._currentLanguage
+        script = self._currentScript
         for element in self._currentElement.statements:
             self._parseElement(element)
-        self._currentLookup = None
-        self._currentLanguageTag = None
-        self._currentScriptTag = None
+        self._currentBlock = block
+        self._currentLanguage = language
+        self._currentScript = script
 
     def _parseStatementAttributes(self):
         # add nested features, lookups, classes, statements attr to RGlyph objects
@@ -175,7 +203,26 @@ class ParsedFeatureFile():
 
     def _getGsubStatementGlyphs(self):
         statement = self._currentElement
-        return [_convertToListOfGlyphNames(getattr(statement, a)) for a in self.gsubGlyphsAttrs[type(statement)]]
+        return [self._convertToListOfGlyphNames(getattr(statement, a)) for a in self.gsubGlyphsAttrs[type(statement)]]
+
+    def _convertToListOfGlyphNames(self, e):
+        # we need to make all the glyph statement consistent because feaLib parser
+        # sometimes creates ast objects and sometimes string.
+        if isinstance(e, str):
+            return [e, ]
+        if isinstance(e, GlyphName):
+            return [e.glyph, ]
+        if isinstance(e, list):
+            result = []
+            for e2 in e:
+                result.extend(self._convertToListOfGlyphNames(e2))
+            return result
+        if isinstance(e, GlyphClassName):
+            self._assignClassReferences(e.glyphclass)
+            return self._convertToListOfGlyphNames(e.glyphclass.glyphs)
+        if isinstance(e, GlyphClass):
+            e.parent = self._currentElement
+            return self._convertToListOfGlyphNames(e.glyphs)
 
     def statementsByType(self, elementType, featureTags=set()):
         """
@@ -194,24 +241,6 @@ class ParsedFeatureFile():
             return self.features.keys()
         else:
             return set(featureTags)
-
-def _convertToListOfGlyphNames(e):
-    # we need to make all the glyph statement consistent because feaLib parser
-    # somtimes creates ast objects and sometimes string.
-    if isinstance(e, str):
-        return [e, ]
-    if isinstance(e, GlyphName):
-        return [e.glyph, ]
-    if isinstance(e, list):
-        result = []
-        for e2 in e:
-            result.extend(_convertToListOfGlyphNames(e2))
-        return result
-    if isinstance(e, GlyphClassName):
-        return _convertToListOfGlyphNames(e.glyphclass.glyphs)
-    if isinstance(e, GlyphClass):
-        return _convertToListOfGlyphNames(e.glyphs)
-
 
 def _renameGlyphNames(e, trasnlateMap):
     if isinstance(e, str):
@@ -236,6 +265,8 @@ Todo:
 KNOWN BUGS:
 - If these objects are not referenced, they should be removed:
     Classes, LanguageSystemStatement, FeatureReferenceStatement
+- if a class doesn't exist it shouldn't be referenced inside another class
+    definition.
 """
 
 def _isRule(statement):
@@ -487,10 +518,15 @@ def blockRulesSubset(self, glyphsToKeep):
         return self
 
 def blockIsEmpty(self):
+    # should be used only after _subsetStatements
     for s in self.statements:
         if _isRule(s):
             return False
     return True
+
+def featureReferenceSubset(self, glyphsToKeep):
+    if any([feaBlock.subset(glyphsToKeep) is not None for feaBlock in self.featureBlocks]):
+        return self
 
 LookupBlock.isEmpty = blockIsEmpty
 FeatureBlock.isEmpty = blockIsEmpty
@@ -498,6 +534,7 @@ Element.subset = elementSubset
 GlyphName.subset = glyphNameSubset
 GlyphClass.subset = glyphClassSubset
 Block.subset = blockSubset
+FeatureReferenceStatement.subset = featureReferenceSubset
 AttachStatement.subset = glyphClassSubset
 LigatureCaretByIndexStatement.subset = glyphClassSubset
 LigatureCaretByPosStatement.subset = glyphClassSubset
@@ -554,21 +591,24 @@ def subset(features, glyphsToKeep=None):
     featureFile.subset(glyphsToKeep)
     return featureFile
 
-@fontCachedMethod("Features.Changed")
+def _getFontToolsFeaturesParser(featureFilePath, followIncludes=True):
+    return Parser(featureFilePath, followIncludes=followIncludes)
+
+@fontMethod
+def featuresPath(features):
+    return os.path.join(features.font.path, "features.fea")
+
+@fontMethod
 def getIncludedFilesPaths(features, absolutePaths=True):
     """
     Returns paths of included feature files.
     If absoulutePaths is True, the abs path of the included files will be returned.
     """
-    font = features.font
-    ufoPath = features.font.path
-    ufoName = PurePath(ufoPath).stem
-    ufoRoot = PurePath(ufoPath).parent
-    featxt = features.text or ""
-    buf = StringIO(featxt)
-    buf.name = os.path.join(ufoPath, "features.fea")
-    parser = Parser(buf, set(font.keys()), followIncludes=False)
     includeFiles = set()
+    parser = features.getFontToolsFeaturesParser(followIncludes=False)
+    font = features.font
+    ufoName = font.fileName
+    ufoRoot = font.folderPath
     for s in parser.parse().statements:
         if isinstance(s, IncludeStatement):
             path = os.path.join(ufoRoot, s.filename)
@@ -604,3 +644,17 @@ def GPOS(font):
     featureCompiler.glyphSet = OrderedDict((gn, font[gn]) for gn in glyphOrder)
     featureCompiler.compile()
     return featureCompiler.features
+
+@fontMethod
+def normalize(features, includeFiles=True):
+    """
+    Normalizes the feature files using fontTools.fealib parser.
+    """
+
+    features.text = str(features.getFontToolsFeaturesParser(followIncludes=False).parse())
+    if includeFiles:
+        files = features.getIncludedFilesPaths()
+        for feaPath in files:
+            normalizedFea = _getFontToolsFeaturesParser(feaPath, followIncludes=False).parse()
+            with open(feaPath, "w", encoding="utf-8") as f:
+                f.write(str(normalizedFea))
