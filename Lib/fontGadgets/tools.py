@@ -82,11 +82,11 @@ class FontMethodsRegistrar():
 
     def _attributeAlreadyExist(self):
         method = f'{self.objectName}.{self.funcName}'
-        if method not in self._registeredMethods:
+        if method not in _registeredMethods:
             for obj in (self.defconObject, self.fontPartsObject):
                 if hasattr(obj, self.funcName):
                     logger.error(f"Registration of `{self.funcName}` as a function for the class `{obj}` failed, "
-                                f"because the object already has an attribute with this exact name."
+                                f"because the object already has an attribute/method with this exact name."
                                 )
                     return True
         else:
@@ -135,7 +135,6 @@ def fontCachedMethod(*destructiveNotifications):
     def wrapper(funct):
         registrar = FontMethodsRegistrar(funct)
         registrar.registerAsFontCachedMethod(*destructiveNotifications)
-        logger.debug(', '.join(_registeredMethods))
     return wrapper
 
 def fontMethod(funct):
@@ -146,4 +145,3 @@ def fontMethod(funct):
     """
     registrar = FontMethodsRegistrar(funct)
     registrar.registerAsFontMethod()
-    logger.debug(', '.join(_registeredMethods))

@@ -16,6 +16,8 @@ setup(
     "fontTools",
     "ufo2ft",
     "ufoLib2",
+    "pytest",
+    "ufonormalizer"
     ],
     tests_require=[
         'pytest>=3.7',

@@ -634,7 +634,7 @@ class GPOSCompiler(FeatureCompiler):
         self.features = featureFile.asFea()
 
 @fontCachedMethod("Glyph.AnchorsChanged", "Groups.Changed", "Kerning.Changed", "Layer.GlyphAdded", "Layer.GlyphDeleted")
-def GPOS(features):
+def gpos(features):
     """
     Generates mark, kern features using ufo2ft.
     """
