@@ -607,7 +607,7 @@ def getIncludedFilesPaths(features, absolutePaths=True):
     includeFiles = set()
     parser = features.getFontToolsFeaturesParser(followIncludes=False)
     font = features.font
-    ufoName = font.fileName
+    ufoName = font.fontFileName
     ufoRoot = font.folderPath
     for s in parser.parse().statements:
         if isinstance(s, IncludeStatement):
@@ -634,10 +634,11 @@ class GPOSCompiler(FeatureCompiler):
         self.features = featureFile.asFea()
 
 @fontCachedMethod("Glyph.AnchorsChanged", "Groups.Changed", "Kerning.Changed", "Layer.GlyphAdded", "Layer.GlyphDeleted")
-def GPOS(font):
+def GPOS(features):
     """
     Generates mark, kern features using ufo2ft.
     """
+    font = features.font
     skipExport = font.lib.get("public.skipExportGlyphs", [])
     glyphOrder = (gn for gn in font.glyphOrder if gn not in skipExport)
     featureCompiler = GPOSCompiler(font)

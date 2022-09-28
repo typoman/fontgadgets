@@ -61,10 +61,12 @@ def scale(font, factor=1, layerNames=None, roundValues=True):
 @fontMethod
 def subset(font, glyphsToKeep, subsetName=None):
     """
-    Subsets and returns a copy of the font. `subsetName` will be a folder next to the ufo
+    Subsets and saves the subsetted file into a new folder. `subsetName` will be a folder next to the ufo
     where the subset font will be saved. If this argument is not provided then the most
     common script name in the subset will be used for the folder name.
     """
+
+    glyphsToKeep = [g for g in glyphsToKeep if g in font]
     if subsetName is None:
         scripts = []
         for g in glyphsToKeep:
@@ -72,10 +74,10 @@ def subset(font, glyphsToKeep, subsetName=None):
         scriptCounter = Counter(scripts)
         subsetName = scriptCounter.most_common()[0][0]
 
-    subsetUfoPath = f'{font.folderPath}/{subsetName}/{font.fileName}'
+    subsetUfoPath = f'{font.folderPath}/{subsetName}/{font.fontFileName}'
     shutil.copytree(font.path, subsetUfoPath)
     subsetFont = Font(subsetUfoPath)
-    subsetFont.features.text = str(font.features.subset(tuple(glyphsToKeep)))
+    subsetFont.features.text = str(font.features.subset(tuple(sorted(glyphsToKeep))))
     glyphsToKeep = set(glyphsToKeep)
     glyphsToRemove = set(subsetFont.keys()) - glyphsToKeep
     componentReferences = subsetFont.componentReferences
@@ -114,22 +116,34 @@ def subset(font, glyphsToKeep, subsetName=None):
     subsetFont.save()
     return subsetFont
 
-
 @fontMethod
-def fileName(font):
+def fontFileName(font):
+    """
+    Returns the file name of the font file.
+    """
     return os.path.basename(font.path)
 
 @fontMethod
 def folderPath(font):
+    """
+    Returns the root path of the font file.
+    """
     return os.path.dirname(font.path)
 
 @fontMethod
 def designSpaces(font):
+    """
+    Return the design space files on the root of the font file which
+    contain this font as a source.
+    """
+
     designSpaceFiles = {}
-    for filename in os.listdir(font.folderPath):
-        if filename.endswith(".designspace"):
-            designSpaceFile = DesignSpaceDocument.fromfile(os.path.join(font.folderPath, filename))
-            designSpaceFiles[designSpaceFile.path] = designSpaceFile
+    for fontFileName in os.listdir(font.folderPath):
+        if fontFileName.endswith(".designspace"):
+            designSpaceFile = DesignSpaceDocument.fromfile(os.path.join(font.folderPath, fontFileName))
+            for so in designSpaceFile.sources:
+                if so.path == font.path:
+                    designSpaceFiles[designSpaceFile.path] = designSpaceFile
     return designSpaceFiles
 
 @fontMethod

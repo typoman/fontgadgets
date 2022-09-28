@@ -7,3 +7,4 @@
 getGlyphALternates
 - filtered by feature tag
 - observer for changes in the included feature files that makes the RFeatures dirty
+- subset the included feature files instead of saving all the new features inside.

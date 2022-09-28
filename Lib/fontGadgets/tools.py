@@ -1,43 +1,10 @@
 import defcon
 import fontParts.world
-import time
-import sys
-import importlib
-from types import ModuleType
 import logging
 import inspect
 
 logger = logging.getLogger(__name__)
-
-def deepReload(m: ModuleType):
-    name = m.__name__  # get the name that is used in sys.modules
-    name_ext = name + '.'  # support finding sub modules or packages
-
-    def compare(loaded: str):
-        return (loaded == name) or loaded.startswith(name_ext)
-
-    all_mods = tuple(sys.modules)  # prevent changing iterable while iterating over it
-    sub_mods = filter(compare, all_mods)
-
-    for pkg in sub_mods:
-        p = importlib.import_module(pkg)
-        importlib.reload(p)
-
-def timeit(method):
-    """
-    A decorator that makes it possible to time functions.
-    """
-    def timed(*args, **kw):
-        ts = time.time()
-        result = method(*args, **kw)
-        te = time.time()
-        if 'log_time' in kw:
-            name = kw.get('log_name', method.__name__.upper())
-            kw['log_time'][name] = int((te - ts) * 1000)
-        else:
-            logger.debug('%r  %2.2f ms' %(method.__name__, (te - ts) * 1000))
-        return result
-    return timed
+# logging.basicConfig(level=logging.DEBUG)
 
 def _destroyRepresentationsForNotification(self, notification):
     notificationName = notification.name
@@ -47,7 +14,8 @@ def _destroyRepresentationsForNotification(self, notification):
     # Overrids the defcon default behavior to make it possible for a child object
     # to destroy relevant representations on the parent. For example it would be
     # possible to make use of 'Kerning.Changed' destructive notification on the
-    # 'Font' object:
+    # 'Font' object, if 'Font' obj has a representaion with such destructive
+    # notification:
     # https://github.com/robotools/defcon/issues/287
     try:
         p = self.getParent()
@@ -64,7 +32,8 @@ def _getFontMethodParameters(funct):
     funcName = funct.__name__
     return args, funcName, funcSign
 
-# This might be hacky, but it works for now!
+# All of the follwoing might be hacky, but it works!
+_registeredMethods = []
 
 class FontMethodsRegistrar():
 
@@ -80,22 +49,24 @@ class FontMethodsRegistrar():
         try:
             return getattr(fontParts.fontshell, "R"+self.objectName)
         except AttributeError:
-            logger.exception(f"R{self.objectName} is not a fontParts object. "
-                            f"First argument in your function should be a "
-                            f"defcon object name:\nFunction: {self.funcName}\n Argument:{self.args[0]}"
-                            )
+            self._failObjectName('fontParts')
 
     @property
     def defconObject(self):
         try:
             return getattr(defcon, self.objectName)
         except AttributeError:
-            logger.exception(f"{self.objectName} is not a defcon object. "
-                            f"First argument in your function should be a "
-                            f"defcon object name:\nFunction: {self.funcName}\n Argument:{self.args[0]}"
-                            )
+            self._failObjectName('defcon')
+
+    def _failObjectName(self, package):
+        logger.exception(f"{self.objectName} is not a {package} object. "
+                        f"First argument in your function should be a "
+                        f"{package} object name:\nFunction: {self.funcName}\n Argument:{self.args[0]}"
+                        )
 
     def registerAsFontMethod(self):
+        if self._attributeAlreadyExist():
+            return
         if self.args[1:]:
             setattr(self.defconObject, self.funcName, self.funct)
             funcName = f"fp{self.funcName}"
@@ -107,6 +78,20 @@ class FontMethodsRegistrar():
             # register the function as property
             setattr(self.fontPartsObject, self.funcName, property(lambda o: self.funct(o)))
             setattr(self.defconObject, self.funcName, property(lambda o: self.funct(o)))
+        _registeredMethods.append(f'{self.objectName}.{self.funcName}')
+
+    def _attributeAlreadyExist(self):
+        method = f'{self.objectName}.{self.funcName}'
+        if method not in self._registeredMethods:
+            for obj in (self.defconObject, self.fontPartsObject):
+                if hasattr(obj, self.funcName):
+                    logger.error(f"Registration of `{self.funcName}` as a function for the class `{obj}` failed, "
+                                f"because the object already has an attribute with this exact name."
+                                )
+                    return True
+        else:
+            logger.warning(f"Overriding an exising `{method}` method.")
+        return False
 
     def _createPresentationMethodWtihArgs(self, isDefconMethod=False):
         nakedCode = ''
@@ -126,16 +111,19 @@ class FontMethodsRegistrar():
         exec("\n".join(code))
 
     def registerAsFontCachedMethod(self, *destructiveNotifications):
+        if self._attributeAlreadyExist():
+            return
         self.funcRepresentationKey = f"{self.funcName}.representation"
         defobjc = self.defconObject
         defcon.registerRepresentationFactory(defobjc, self.funcRepresentationKey, self.funct, destructiveNotifications=destructiveNotifications)
         if self.args[1:]:
             self._createPresentationMethodWtihArgs()
-            self._createPresentationMethodWtihArgs(True)
+            self._createPresentationMethodWtihArgs(isDefconMethod=True)
         else:
             # register the function as property
             setattr(defobjc, self.funcName, property(lambda o: o.getRepresentation(self.funcRepresentationKey)))
             setattr(self.fontPartsObject, self.funcName, property(lambda o: o.naked().getRepresentation(self.funcRepresentationKey)))
+        _registeredMethods.append(f'{self.objectName}.{self.funcName}')
 
 def fontCachedMethod(*destructiveNotifications):
     """
@@ -147,13 +135,15 @@ def fontCachedMethod(*destructiveNotifications):
     def wrapper(funct):
         registrar = FontMethodsRegistrar(funct)
         registrar.registerAsFontCachedMethod(*destructiveNotifications)
+        logger.debug(', '.join(_registeredMethods))
     return wrapper
 
 def fontMethod(funct):
     """
     This is a decorator that makes it possible to convert self standing functions to
-    methods on the fontParts objects. If the function only has one argument then
+    methods on fontParts objects. If the function only has one argument then
     it will become a property.
     """
     registrar = FontMethodsRegistrar(funct)
     registrar.registerAsFontMethod()
+    logger.debug(', '.join(_registeredMethods))
