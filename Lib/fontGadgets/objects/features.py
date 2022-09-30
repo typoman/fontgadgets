@@ -46,7 +46,7 @@ class GlyphFeautres():
 
 @fontMethod
 def features(glyph):
-    return glyph.font.features.parser[glyph.name]
+    return glyph.font.features.parsed[glyph.name]
 
 @fontMethod
 def getFontToolsFeaturesParser(features, followIncludes=True):
@@ -256,7 +256,7 @@ def _renameGlyphNames(e, trasnlateMap):
     return e
 
 @fontCachedMethod("Features.Changed")
-def parser(features):
+def parsed(features):
     return ParsedFeatureFile(features.font)
 
 #  subsetting
@@ -587,7 +587,7 @@ def subset(features, glyphsToKeep=None):
     """
     if glyphsToKeep is None:
         glyphsToKeep = features.font.keys()
-    featureFile = features.parser.featureFile
+    featureFile = features.parsed.featureFile
     featureFile.subset(glyphsToKeep)
     return featureFile
 
@@ -595,7 +595,7 @@ def _getFontToolsFeaturesParser(featureFilePath, followIncludes=True):
     return Parser(featureFilePath, followIncludes=followIncludes)
 
 @fontMethod
-def featuresPath(features):
+def path(features):
     return os.path.join(features.font.path, "features.fea")
 
 @fontMethod
@@ -652,9 +652,9 @@ def normalize(features, includeFiles=True):
     Normalizes the feature files using fontTools.fealib parser.
     """
 
-    features.text = str(features.getFontToolsFeaturesParser(followIncludes=False).parse())
+    features.text = [features.path]
     if includeFiles:
-        files = features.getIncludedFilesPaths()
+        files.extend(features.getIncludedFilesPaths())
         for feaPath in files:
             normalizedFea = _getFontToolsFeaturesParser(feaPath, followIncludes=False).parse()
             with open(feaPath, "w", encoding="utf-8") as f:

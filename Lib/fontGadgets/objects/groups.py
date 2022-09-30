@@ -8,7 +8,7 @@ GROUP_SIDE_TAG = ("public.kern1.", "public.kern2.")
 class KerningGroups():
 	"""
 	An object that gets destroyed every time font.groups change. This is
-	an object used for only changing kerning groups of the font.
+	used for changing kerning groups of the font.
 	"""
 
 	def __init__(self, groups):
@@ -60,7 +60,7 @@ class KerningGroups():
 		Sets the kerning groups to the given one. If update is set to True,
 		the old groups will be extended instead of getting removed or reset.
 		"""
-		self.groups.holdNotifications(note="Requested by KerningGroups.set.")
+		self.groups.holdNotifications(note="Requested by fontGadgets.objects.groups.KerningGroups.set.")
 		if not update:
 			self.clear()
 		fontGroups = dict(self.groups)
@@ -88,8 +88,7 @@ class KerningGroups():
 					fontGroups[newGroupName] = members
 				else:
 					# reset the group
-					if newMembers:
-						fontGroups[newGroupName] = newMembers
+					fontGroups[newGroupName] = newMembers
 		self.groups.clear()
 		self.groups.update(fontGroups)
 		self.groups.releaseHeldNotifications()
@@ -131,7 +130,7 @@ def kerningGroups(font):
 	return KerningGroups(font.groups)
 
 @fontMethod
-def kerningGroupSide(glyph, side):
+def _kerningGroupSide(glyph, side):
 	"""
 	`0` is left side, `1` is right side.
 	"""
@@ -149,11 +148,11 @@ def _setKerningGroupSide(glyph, kernGroupName, side):
 
 @fontMethod
 def leftSideKerningGroup(glyph):
-	return glyph.kerningGroupSide(0)
+	return glyph._kerningGroupSide(0)
 
 @fontMethod
 def rightSideKerningGroup(glyph):
-	return glyph.kerningGroupSide(1)
+	return glyph._kerningGroupSide(1)
 
 @fontMethod
 def setLeftSideKerningGroup(glyph, kernGroupName):
@@ -168,4 +167,4 @@ def isGrouped(glyph):
 	"""
 	Returns True if glyph has any kerning group.
 	"""
-	return glyph.kerningGroupSide(0) is not None or glyph.kerningGroupSide(1) is not None
+	return glyph._kerningGroupSide(0) is not None or glyph._kerningGroupSide(1) is not None

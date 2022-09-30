@@ -220,7 +220,7 @@ def pseudoUnicodesMapping(font):
 def pseudoUnicodes(glyph):
     """
     If a glyph doesn't have unicode, it will be intrepreted
-    from the substituions in the features.
+    from the substituions in the features or the components.
     """
     return glyph.font.pseudoUnicodesMapping.get(glyph.name, [])
 
