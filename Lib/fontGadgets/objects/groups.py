@@ -6,10 +6,15 @@ RE_GROUP_TAG = re.compile(r'public.kern\d\.')
 GROUP_SIDE_TAG = ("public.kern1.", "public.kern2.")
 
 class KerningGroups():
+	"""
+	An object that gets destroyed every time font.groups change. This is
+	an object used for only changing kerning groups of the font.
+	"""
 
 	def __init__(self, groups):
 		self.groups = groups
 		self._glyphToKerningGroupMapping = None
+		self._items = None
 
 	def _isKerningGroup(self, entry):
 		"""
@@ -23,17 +28,16 @@ class KerningGroups():
 	@property
 	def glyphToKerningGroupMapping(self):
 		"""
-		GlyphName to raw kerning group name mapping
+		GlyphName to raw kerning group name mapping.
 		"""
-		if self._glyphToKerningGroupMapping:
-			return self._glyphToKerningGroupMapping
-		result = [{}, {}]
-		for group, members in self.groups.items():
-			if self._isKerningGroup(group):
-				for glyphName in members:
-					side, name = self._getSideAndRawGroupName(group)
-					result[side][glyphName] = name
-		self._glyphToKerningGroupMapping = tuple(result)
+		if self._glyphToKerningGroupMapping is None:
+			result = [{}, {}]
+			for group, members in self.groups.items():
+				if self._isKerningGroup(group):
+					for glyphName in members:
+						side, name = self._getSideAndRawGroupName(group)
+						result[side][glyphName] = name
+			self._glyphToKerningGroupMapping = tuple(result)
 		return self._glyphToKerningGroupMapping
 
 	def items(self):
@@ -42,12 +46,14 @@ class KerningGroups():
 		only appears in the first item of a kerning pair and also same for the second
 		member.
 		"""
-		result = [{}, {}]
-		for group, members in self.groups.items():
-			if self._isKerningGroup(group):
-				side, name = self._getSideAndRawGroupName(group)
-				result[side][name] = members
-		return tuple(result)
+		if self._items is None:
+			result = [{}, {}]
+			for group, members in self.groups.items():
+				if self._isKerningGroup(group):
+					side, name = self._getSideAndRawGroupName(group)
+					result[side][name] = members
+			self._items = tuple(result)
+		return self._items
 
 	def set(self, kerningGroups, update=False):
 		"""
@@ -89,9 +95,16 @@ class KerningGroups():
 		self.groups.releaseHeldNotifications()
 
 	def update(self, kerningGroups):
-		self.set(kerningGroups, update=False)
+		"""
+		Any new glyph for a kerning group will be added to the old kerning
+		groups.
+		"""
+		self.set(kerningGroups, update=True)
 
 	def clear(self):
+		"""
+		Clears only kerning groups.
+		"""
 		for group in list(self.groups):
 			if self._isKerningGroup(group):
 				del self.groups[group]
