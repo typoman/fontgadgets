@@ -25,13 +25,6 @@ def _destroyRepresentationsForNotification(self, notification):
 
 defcon.objects.base.BaseObject._destroyRepresentationsForNotification = _destroyRepresentationsForNotification
 
-def _getFontMethodParameters(funct):
-    funcSign = inspect.signature(funct)
-    args = [p.name for p in funcSign.parameters.values()]
-    funcSign = ", ".join([str(p) for p in funcSign.parameters.values()])
-    funcName = funct.__name__
-    return args, funcName, funcSign
-
 # All of the follwoing might be hacky, but it works!
 _registeredMethods = []
 
@@ -140,7 +133,7 @@ def fontCachedMethod(*destructiveNotifications):
 def fontMethod(funct):
     """
     This is a decorator that makes it possible to convert self standing functions to
-    methods on fontParts objects. If the function only has one argument then
+    methods on defcon/fontParts objects. If the function only has one argument then
     it will become a property.
     """
     registrar = FontMethodsRegistrar(funct)
