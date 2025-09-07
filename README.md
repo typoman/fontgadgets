@@ -1,41 +1,66 @@
+# FontGadgets
 
-# What?
-This is a monkey patcher for `fontParts` and `defcon` objects. It's one way of adding more high level functions to these packages without having to modify their code directly.
-This package already adds more methods and attributes to font objects. Some examples are `glyph.features` for finding glyph related substitutions and some other methods to 
-make it easier to change kerning groups. Also you can use `font.scale` to scale the whole font or `font.subset` to subset the font to a smaller glyph set.
+[License](https://github.com/typoman/fontgadgets/blob/main/LICENSE)
 
-# Usage
-Add your own methods to fontpart/defcon objects by simply defining a function. The first argument of the function should be a name of a defcon object, like `font`, `glyph`, etc. Before the function use the one of the decorators from this package: `fontMethod` or `fontCachedMethod`.
+A library that extends the capabilities of `defcon` and `FontParts` objects with high-level methods.
+## Why?
+Are you tired of writing or copying the same function for every font project? FontGadgets centralizes common, high-level font manipulation tasks by attaching them directly to the defcon and FontParts objects you already use. This keeps your scripts cleaner and your workflow more organized. I also created tools for working with complex fonts and some of these tools share the same functionalities. So I decided to put everything in one place.
+## What is FontGadgets?
+FontGadgets is a Python package that uses a technique called "monkey patching" to add new functionalities—or "extensions"—to the core objects of `defcon` and `FontParts`.
+This approach allows for the addition of high-level functions without modifying the original source code of these libraries. With FontGadgets, you can perform complex operations like scaling an entire font, creating subsets, managing kerning groups, and much more, directly on your font and glyph objects.
+### Features:
+*   **Extensible:** Add your own custom methods and properties to `defcon` and `FontParts` objects.
+*   **Built-in extensions:** Comes with a set of pre-built extensions for common font manipulation tasks.
+*   **Efficient:** Includes decorators for caching the results of computationally expensive methods.
+*   **Type-Hint Aware:** Provides fine-grained control over which objects your methods are added to.
+## Installation
+To install the latest version from the repository in editable mode, follow these steps:
 
-## Exmaples
-Define a new method for glyph object:
-```py
-from fontGadgets.tools import fontMethod
+```bash
+git clone https://github.com/typoman/fontgadgets
+cd fontgadgets
+pip3 install -e .
+```
+## Usage: Adding Your Own Extensions
+You can easily add your own methods to `defcon` and `FontParts` objects using the decorators provided by FontGadgets. The first argument of your function should always be an instance of the object you intend to modify (e.g., `font`, `glyph`).
+### Available Decorators
+*   `@font_method`: Adds a regular method to a class.
+*   `@font_property`: Adds a read-only dynamic attribute (a property) to a class.
+*   `@font_property_setter`: Adds a setter for an existing property.
+*   `@font_cached_method`: Adds a method whose results are cached. The cache is invalidated based on specific "destructive notifications" you provide.
+*   `@font_cached_property`: Adds a cached property.
+### Examples
+#### Adding a Dynamic Attribute
+Here's how to add an `isComposite` property to a glyph object, which will be `True` if the glyph is a composite.
+```python
+from fontgadgets.decorators import font_property
 
-@fontMethod
+@font_property
 def isComposite(glyph):
+    """
+    Returns True if the glyph is a composite, False otherwise.
+    """
     return len(glyph.contours) == 0 and len(glyph.components) > 0
 ```
-
-Now glyph object has a new property. `fontGadgets` adds functions which have only one argument as a property.
-```
->>> glyph.isComposite
+Now, you can access this as a property on any glyph object:
+```python
+>>> myGlyph.isComposite
 True
 ```
-
-You can also define a method that can be more efficient if the code is performance heavy. Make sure the argument types are immutable (e.g. int, str, etc.):
-```py
-from fontGadgets.tools import fontCachedMethod
+#### Adding a Cached Method
+For performance-heavy operations, you can use a cached method. The following example creates a stroked version of a glyph. The result is cached and will only be re-calculated if the glyph's contours or components change.
+```python
+from fontgadgets.decorators import font_cached_method
 from drawBot import BezierPath
 from defcon import Glyph
 from fontTools.pens.cocoaPen import CocoaPen
 
-@fontCachedMethod("Glyph.ContoursChanged", "Glyph.ComponentsChanged", "Component.BaseGlyphChanged")
+@font_cached_method("Glyph.ContoursChanged", "Glyph.ComponentsChanged", "Component.BaseGlyphChanged") # You can find the list of notifications from each defcon object by using for example, help(defcon.Glyph)
 def getStroked(glyph, strokeWidth):
     """
-    Returns a stroked copy of the glyph with the defined stroked width. The `strokeWidth` is an integer.
+    Returns a stroked copy of the glyph with the defined stroke width.
     """
-    print('One more time')
+    print("Executing the stroking logic...")
     pen = CocoaPen(glyph.font)
     glyph.draw(pen)
     bezierPath = BezierPath(pen.path)
@@ -43,15 +68,52 @@ def getStroked(glyph, strokeWidth):
     newPath = bezierPath.expandStroke(strokeWidth).removeOverlap()
     union = newPath.union(bezierPath)
     result = Glyph()
-    p = result.getPen()
-    union.drawToPen(p)
+    pen = result.getPen()
+    union.drawToPen(pen)
     return result
 
-g = CurrentGlyph()
+g = CurrentGlyph() # Works in a RoboFont environment
 g.getStroked(10)
-```
-This new method will only be executed if any of the destructive notifications from the `fontCachedMethod` have been posted from changes. This makes it faster to fetch the result if you 
-want to call it over and over. In the above example if you run the code in RoboFont, you can see that in the output `'One more time'` will be printed only when you run the code first time.
+# "Executing the stroking logic..." is printed
 
-# Warning
-This is WIP, use it at your own risk!
+g.getStroked(10)
+# The message is not printed because the cached result is returned instantly and the function body is not executed.
+```
+### Advanced Usage: Type Hinting
+You can control which library (`defcon` or `FontParts`) and which specific object a method is added to by using Python's type hints.
+#### Targeting a Specific Object
+To add a method exclusively to a `fontParts.fontshell.RSegment` object (and not a `defcon` segment), you can do the following:
+```python
+from fontgadgets.decorators import font_method
+from fontParts.fontshell import RSegment
+
+@font_method
+def myFunction(segment: RSegment):
+    # This logic will only be available on RSegment objects
+    pass
+```
+#### Controlling the Return Types
+If your method returns a `defcon` object, FontGadgets can automatically wrap it in the corresponding `FontParts` object when the method is called from a `FontParts` instance. You just need to add the return type hint to the function definition.
+```python
+from fontgadgets.decorators import font_method
+import defcon
+
+@font_method
+def subset(font) -> defcon.Font: # Note the return type hint
+    # ... subsetting logic that returns a new defcon.Font
+    return new_defcon_font
+```
+When you call `my_rfont_object.subset()` on a `RFont` object, the returned `defcon.Font` will be automatically converted to a `fontParts.fontshell.RFont` object.
+## Available Extensions
+FontGadgets comes with a wide array of pre-built extensions. Here are some of the available modules:
+*   **Anchors:** Propagate anchors.
+*   **Components:** Tools for working with glyph components and composites.
+*   **Features:** Compile, rename, and subset OpenType features.
+*   **Font:** Scale, subset, and manage font-wide properties.
+*   **Glyph:** Boolean operations, hashing, kerning, etc.
+*   **Groups:** Manipulate kerning groups with a glyph-centered API.
+*   **Interpolation:** Handle operations within a designspace.
+*   And many more...
+## Warning
+This package is currently in an alpha stage of development. While it is stable enough for adding methods to font objects, the public API may change in future versions. Please report any issues you encounter in the repository's issue tracker.
+
