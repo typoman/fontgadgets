@@ -1,9 +1,9 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="fontGadgets",
-    version="0.0.1",
-    description="A package to add more functions to fontParts and defcon",
+    name="fontgadgets",
+    version="0.2.2.5",
+    description="A package to extend fontParts and defcon objects.",
     author="Bahman Eslami",
     author_email="contact@bahman.design",
     url="http://bahman.design",
@@ -14,7 +14,6 @@ setup(
     install_requires=[
     "fontParts",
     "defcon",
-    "fontTools",
     "ufo2ft",
     "ufoLib2",
     "pytest",

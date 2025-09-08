@@ -9,6 +9,10 @@ import typing
 from typing import Type, List, Tuple, Union
 import functools
 
+# TODO: 
+# - dont' use RoboFont to find instances of the defcon to 
+# reset their representations. 
+
 VALID_DEFCON_NOTIFCATIONS = {
     "Glyph.Changed",
     "Glyph.BeginUndo",

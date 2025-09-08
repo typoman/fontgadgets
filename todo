@@ -1,10 +1,107 @@
-# In the fontemethod add undo if the environment is RF
+# Main
+- Track file changes and post notifications. Example notifications: 'Features.IncludedFeaturesChanged', 'Font.FilePathChanged'. FilePath is needed to find the relative included features.
+- When the function is defined using the decorators, they also pollute the name space of the module they're defined in. Find an alternate name for the function to avoid polluting the module namespace.
 
-# glyph
-- scale
+# Composites
+- glyph.compositor: A new wrapper for glyph constructions and updating the metrics.
 
-# features
-getGlyphALternates
-- filtered by feature tag
-- observer for changes in the included feature files that makes the RFeatures dirty
-- subset the included feature files instead of saving all the new features inside.
+# Anchors
+- anchor.type: For differentiating the anchors that are used for mark feature, creating composites, or other types of features. Store on glyph lib for now.
+- anchor.ligatureIndex: For ligatures, to indicate which ligature component an anchor belongs to.
+- anchor.group: The name of the anchor group which this anchor belongs to (e.g., top, bottom).
+
+## glyph
+- `copyAttributesFromGlyph` should accept `leftMargin` or `rightMargin`.
+
+## fontGadgets.tools
+- Add a `font_property_setter` or `font_property.setter` decorator for setting a value for a custom font property. This can be used to set kerning groups for a glyph.
+- For cached methods, consider converting them to be hashable.
+- Throw a warning when an object can't get a destructive notification from a child or an object of the same type as the first argument. In other words, the registration should check if the modifications belong to the first arg object. We should first make a dictionary that holds the notifications in a nested structure, so the parent could also accept the child notification.
+- Not sure about this yet: Expand destructive notifications for cached functions depending on whether a function has been executed. For example, when `font.save` is executed, the cache will be removed.
+
+  Example:
+    ```py
+    # this will delete the '_repo' and '_glyphCommits' attributes after font.save
+    CACHE_ATTRIBUTES = ('_repo', '_glyphCommits')
+    def deleteRepoCache(function):
+        @wraps(function)
+        def wrapper(self, *args, **kwargs):
+            for a in CACHE_ATTRIBUTES:
+                if hasattr(self, a):
+                    delattr(self, a)
+            for g in self:
+                if hasattr(g, '_path'):
+                    delattr(g, '_path')
+            return function(self, *args, **kwargs)
+        return wrapper
+
+    Font.save = deleteRepoCache(Font.save)
+    ```
+
+## defcon
+- Keep track of changes in included feature files to post notifications. This can be done using `mac.fileObserver` from FontGoggles. When a font opens, start observing these files and post "Features.IncludedFeaturesChanged" when a change is detected.
+
+## glyph.GlyphTypeInterpreter
+- Use features to determine the glyph type.
+
+## Unicode
+- Investigate the `unicodedata` object to see if its functionality can be fully utilized.
+- Override the `unicode` property and change it to a subclass of tuple that provides these attributes: `script`, `direction`, `interpreted` (for unicodes interpreted from features or the glyph name).
+
+## Font Sets
+- Create font sets, such as fonts with similar attributes within the current folder or an arbitrary number of fonts added to an object.
+- Make groups compatible within a font set and also change the kerning for the new groups.
+- Sort fonts based on OS/2 weight class, shared glyph widths, or shared glyph bounds.
+
+## features
+- Add a test for https://github.com/fonttools/fonttools/issues/501.
+- Add `glyph.features.definitions` from GDEF (named `glyphdefs`, `gdef`, or `GDEF`).
+- Add an "IncludedFeatures.Changed" notification to defcon by tracking changes in the included feature files.
+- Add "IncludeStatement.subset".
+- Enable editing of features inside the `GlyphFeatures` object and saving them back to disk.
+- Implement the possibility of caching GPOS and GSUB tables and destroying them with defcon notifications when glyphs are removed or added.
+- Allow for the possibility of changing GPOS table attributes when a glyph's anchors or kerning is changed.
+
+```
+# This is for the compiler object
+def _compileFeatures(self, kern=True, mark=True, gdef=True, curs=True):
+    # How to cache features? Is it possible to have some cached tables on the font level
+    # that get destroyed if a certain feature changed?
+    # Maybe we can parse the base features, have a base parsed/compiled bare feature cache,
+    # then add GPOS, GDEF, GSUB, based on the changes which will be caught by defcon cache.
+    pass```
+
+### featureos subsetter
+KNOWN BUGS:
+- Subsetting classes can cause the statement `sub @init_src by @init_des;` to be dropped. This could be because the subsetter doesn't ensure that matching items between `src` and `des` in these types of classes are also subset. Instead, we should track which classes are used as pairs, then which glyphs inside each pair class get subset, and drop the same indexes in both.
+- If these objects are not referenced, they should be removed: Classes, LanguageSystemStatement, FeatureReferenceStatement. For language systems, there should be a way to keep references for their usages in lookups or rules.
+- If a class doesn't exist, it shouldn't be referenced inside another class definition.
+- Attach comments to the next or previous statement. If the whole line is taken by the comment, the next rule is the parent; otherwise, the previous one is. If the parent is dropped, also drop the comment.
+
+## Kerning
+- Merge: Add kerning from another font without overriding the current kerning.
+- Copy/Override: Add kerning from another font, overriding the current kerning.
+- Copy kerning from another font on a per-glyph basis, and do the same for groups.
+- Create a diff report from another font that can be easily visualized.
+- Create a contextual kerning object.
+- Add a `copyKerning` method to the glyph object.
+
+## Groups
+- Merge: Add groups from another font without overriding the current ones.
+- Create a diff report.
+- Remove groups and kerning methods for the glyph object.
+
+## Font:
+- `getAllAnchorNames`
+- `getLigatureNames`
+- `getSkipExportGlyphs`
+
+## Glyph:
+- `removeAnchorsByName(anchorNames)`
+- `getGlyphAlternates()`
+- `getFeatureTags()` # In which features is the glyph used?
+- `copyAnchors` from another glyph with an option to change the positions based on the bounding box.
+
+## Features:
+- `subsetFeatures(glyphsToRemove)`
+- `renameGlyphs(renameMap)`

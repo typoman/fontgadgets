@@ -13,6 +13,3 @@ def loadExtensions():
 	from . import point as _point
 	from . import segment as _segment
 	from . import compile as _compile
-
-	if getEnvironment() == "robofont":
-		from . import robofont as _robofont
