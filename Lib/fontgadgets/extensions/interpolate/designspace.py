@@ -1,15 +1,19 @@
 from fontTools import designspaceLib
 import fontgadgets.extensions.font
 from fontgadgets import FontGadgetsError, getEnvironment
+
 try:
     from ufoProcessor import ufoOperator
 except ImportError:
     if getEnvironment() == "RoboFont":
         raise FontGadgetsError("You need to install `Designspace Editor 2` extension.")
-    raise FontGadgetsError("ِInstall the latest version of ufoProcessor from:"
-                           "https://github.com/LettError/ufoProcessor.git")
+    raise FontGadgetsError(
+        "ِInstall the latest version of ufoProcessor from:"
+        "https://github.com/LettError/ufoProcessor.git"
+    )
 from mutatorMath.objects.location import Location
 import os
+
 
 def getSwapMapFromRulesAndLoationForGlyphNames(rules, location, glyphNames):
     """
@@ -24,11 +28,12 @@ def getSwapMapFromRulesAndLoationForGlyphNames(rules, location, glyphNames):
                     swapMap[glyphName1] = glyphName2
     return swapMap
 
+
 # subclass of ufoProcessor.ufoOperator.UFOOperator to process the swapping of
 # the glyphs in designspace rules when generating the instances
 
-class InterpolateFontsFromDesignSpace(ufoOperator.UFOOperator):
 
+class InterpolateFontsFromDesignSpace(ufoOperator.UFOOperator):
     """
     usage:
     generateInstances = InterpolateFontsFromDesignSpace(ds5Path)
@@ -51,8 +56,11 @@ class InterpolateFontsFromDesignSpace(ufoOperator.UFOOperator):
         for instanceDescriptor in self.doc.instances:
             if instanceDescriptor.path is None:
                 continue
-            font = self.makeInstanceWithRules(instanceDescriptor, glyphNames=self.glyphNames,
-                                              decomposeComponents=False)
+            font = self.makeInstanceWithRules(
+                instanceDescriptor,
+                glyphNames=self.glyphNames,
+                decomposeComponents=False,
+            )
             instanceFolder = os.path.dirname(instanceDescriptor.path)
             if not os.path.exists(instanceFolder):
                 os.makedirs(instanceFolder)
@@ -62,30 +70,48 @@ class InterpolateFontsFromDesignSpace(ufoOperator.UFOOperator):
         self.useVarlib = previousModel
         return generatedFonts
 
-    def makeInstanceWithRules(self, instanceDescriptor, glyphNames=None, decomposeComponents=False):
+    def makeInstanceWithRules(
+        self, instanceDescriptor, glyphNames=None, decomposeComponents=False
+    ):
         # this method will apply the swapping rules to glyphs
-        font = self.makeInstance(instanceDescriptor, glyphNames=glyphNames,
-                                 decomposeComponents=decomposeComponents)
+        font = self.makeInstance(
+            instanceDescriptor,
+            glyphNames=glyphNames,
+            decomposeComponents=decomposeComponents,
+        )
         fullDesignLocation = instanceDescriptor.getFullDesignLocation(self.doc)
         continuousLocation, discreteLocation = self.splitLocation(fullDesignLocation)
         if not self.extrapolate:
             continuousLocation = self.clipDesignLocation(continuousLocation)
         loc = Location(continuousLocation)
-        swapNamesMap = getSwapMapFromRulesAndLoationForGlyphNames(self.rules, loc, self.glyphNames)
-        font.swapGlyphNames(swapNamesMap, component_references=True, kerning_references=True,
-                   groups_references=True, glyphorder_references=False) # same as ufoprocessor and ufo2ft ver 2.7.1.dev722+g71ef6ca.d20221024
+        swapNamesMap = getSwapMapFromRulesAndLoationForGlyphNames(
+            self.rules, loc, self.glyphNames
+        )
+        font.swapGlyphNames(
+            swapNamesMap,
+            component_references=True,
+            kerning_references=True,
+            groups_references=True,
+            glyphorder_references=False,
+        )  # same as ufoprocessor and ufo2ft ver 2.7.1.dev722+g71ef6ca.d20221024
         return font
 
     def collectSkippedGlyphs(self):
-        # this can cause issues with composites, so we dont' skip any glyphs
+        # this can cause issues with composites, so we don't skip any glyphs
         return []
+
 
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description='Generate ufo instances from a designspace file with the swap rules applied to the glyphs.')
-    parser.add_argument('designspacepath', help='Path to the design space file')
-    parser.add_argument('--use-varlib', action='store_true', help='Whether to use varlib')
+    parser = argparse.ArgumentParser(
+        description="Generate ufo instances from a designspace file with the swap rules applied to the glyphs."
+        "usage: python -m fontgadgets.extensions.interpolate.designspace 'path/to/your/interpolation-file.designspace'"
+    )
+    parser.add_argument("designspacepath", help="Path to the design space file")
+    parser.add_argument(
+        "--use-varlib", action="store_true", help="Whether to use varlib"
+    )
     args = parser.parse_args()
 
     generateInstances = InterpolateFontsFromDesignSpace(args.designspacepath)

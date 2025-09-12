@@ -22,6 +22,27 @@ def alignGlyphPositionsInLine(glyphRecords, align):
 
 
 class Layout:
+    """
+    A text layout engine that calculates glyph positions for a given text string.
+
+    This class uses HarfBuzz for shaping and paragraph layout to determine the
+    positions of each glyph in the text. It supports features like text direction,
+    OpenType features, language/script settings, font variations, and text alignment.
+
+    Args:
+        font: The font object to use for text layout and glyph information.
+
+    Example:
+        >>> layout = Layout(font)
+        >>> positions = layout.getGlyphNamesAndPositionsFromText(
+        ...     "Hello World", 
+        ...     direction="ltr",
+        ...     align="center"
+        ... )
+        >>> for glyph_name, (x, y) in positions:
+        ...     print(f"{glyph_name}: ({x}, {y})")
+    """
+
     def __init__(self, font):
         """
         Initializes the Layout with the given font.
