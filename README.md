@@ -6,13 +6,7 @@ A library that extends the capabilities of `defcon` and `FontParts` objects with
 ## Why?
 Are you tired of writing or copying the same function for every font project? FontGadgets centralizes common, high-level font manipulation tasks by attaching them directly to the defcon and FontParts objects you already use. This keeps your scripts cleaner and your workflow more organized. I also created tools for working with complex fonts and some of these tools share the same functionalities. So I decided to put everything in one place.
 ## What is FontGadgets?
-FontGadgets is a Python package that uses a technique called "monkey patching" to add new functionalities—or "extensions"—to the core objects of `defcon` and `FontParts`.
-This approach allows for the addition of high-level functions without modifying the original source code of these libraries. With FontGadgets, you can perform complex operations like scaling an entire font, creating subsets, managing kerning groups, and much more, directly on your font and glyph objects.
-### Features:
-*   **Extensible:** Add your own custom methods and properties to `defcon` and `FontParts` objects.
-*   **Built-in extensions:** Comes with a set of pre-built extensions for common font manipulation tasks.
-*   **Efficient:** Includes decorators for caching the results of computationally expensive methods.
-*   **Type-Hint Aware:** Provides fine-grained control over which objects your methods are added to.
+FontGadgets is a Python package that uses a technique called "monkey patching" to add new functionalities or "extensions" to the core objects of `defcon` and `FontParts`. This approach allows addition of these new methods without modifying the original source code of these libraries. I see it myself as my playground for extending their capabilites before proposing new ideas or additions.
 ## Installation
 To install the latest version from the repository in editable mode, follow these steps:
 
@@ -21,14 +15,14 @@ git clone https://github.com/typoman/fontgadgets
 cd fontgadgets
 pip3 install -e .
 ```
-## Usage: Adding Your Own Extensions
+## Adding Your Own Extensions
 You can easily add your own methods to `defcon` and `FontParts` objects using the decorators provided by FontGadgets. The first argument of your function should always be an instance of the object you intend to modify (e.g., `font`, `glyph`).
 ### Available Decorators
 *   `@font_method`: Adds a regular method to a class.
 *   `@font_property`: Adds a read-only dynamic attribute (a property) to a class.
 *   `@font_property_setter`: Adds a setter for an existing property.
-*   `@font_cached_method`: Adds a method whose results are cached. The cache is invalidated based on specific "destructive notifications" you provide.
-*   `@font_cached_property`: Adds a cached property.
+*   `@font_cached_method`: Adds a method whose results are cached. The cache is invalidated based on the destructive notifications which belong to the object you add the method to. For example for finding the glyph object destructive notifications you can run `help(defcon.Glyph)`.
+*   `@font_cached_property`: Adds a cached property. You also need to pass the destructive notificationts list as the argument of the decorator just like the `font_cached_method`.
 ### Examples
 #### Adding a Dynamic Attribute
 Here's how to add an `isComposite` property to a glyph object, which will be `True` if the glyph is a composite.
@@ -72,17 +66,18 @@ def getStroked(glyph, strokeWidth):
     union.drawToPen(pen)
     return result
 
-g = CurrentGlyph() # Works in a RoboFont environment
+g = font['a']
 g.getStroked(10)
+
 # "Executing the stroking logic..." is printed
 
 g.getStroked(10)
 # The message is not printed because the cached result is returned instantly and the function body is not executed.
 ```
 ### Advanced Usage: Type Hinting
-You can control which library (`defcon` or `FontParts`) and which specific object a method is added to by using Python's type hints.
+You can control which library (`defcon` or `FontParts`) a method is added to by using Python's type hints.
 #### Targeting a Specific Object
-To add a method exclusively to a `fontParts.fontshell.RSegment` object (and not a `defcon` segment), you can do the following:
+To add a method exclusively to a `fontParts.fontshell.RSegment` object (`defcon` doesn't have a segment object), you can do the following:
 ```python
 from fontgadgets.decorators import font_method
 from fontParts.fontshell import RSegment
@@ -105,15 +100,15 @@ def subset(font) -> defcon.Font: # Note the return type hint
 ```
 When you call `my_rfont_object.subset()` on a `RFont` object, the returned `defcon.Font` will be automatically converted to a `fontParts.fontshell.RFont` object.
 ## Available Extensions
-FontGadgets comes with a wide array of pre-built extensions. Here are some of the available modules:
-*   **Anchors:** Propagate anchors.
-*   **Components:** Tools for working with glyph components and composites.
-*   **Features:** Compile, rename, and subset OpenType features.
-*   **Font:** Scale, subset, and manage font-wide properties.
-*   **Glyph:** Boolean operations, hashing, kerning, etc.
-*   **Groups:** Manipulate kerning groups with a glyph-centered API.
-*   **Interpolation:** Handle operations within a designspace.
-*   And many more...
+FontGadgets already comes with pre-built extensions. Here are some of the available modules and the functionalities they add:
+- Features: Compile kerning and mark features, rename, and subset features.
+- Font: Scale, subset.
+- Unicode: Unicode properties (script, direction).
+- Glyph: Boolean operations, copying data between glyphs.
+- Kerning: Manage kerning using a glyph-centered API.
+- Groups: Manipulate kerning groups with a glyph-centered API.
+- Interpolation: Generate instances with glyph swap rules applied.
+- Git: Revert glyph data selectively (e.g. contours, width, etc) to a git commit.
 ## Warning
 This package is currently in an alpha stage of development. While it is stable enough for adding methods to font objects, the public API may change in future versions. Please report any issues you encounter in the repository's issue tracker.
 
