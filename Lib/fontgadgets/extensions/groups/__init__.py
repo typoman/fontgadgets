@@ -54,4 +54,4 @@ def removeGlyphs(groups, glyphNamesToRemove, cleanup=True):
     f.groups.clear()
     f.groups.update(finalGroups)
     if cleanup:
-        groups.cleanup(groups)
+        groups.cleanup()
