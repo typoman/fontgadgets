@@ -66,6 +66,7 @@ def getStroked(glyph, strokeWidth):
     union.drawToPen(pen)
     return result
 
+# To ensure the cache persists, run this code from a separate module/file:
 g = font['a']
 g.getStroked(10)
 

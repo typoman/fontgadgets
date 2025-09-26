@@ -797,7 +797,7 @@ def registerMethodForDefcon(
     defconFunct = functInfo.funct
     if destructiveNotifications != []:
         functRepresentationKey = (
-            f"{functInfo.objectName}.{functInfo.name}.representation"
+            f"fontgadgets.{functInfo.objectName.lower()}.{functInfo.name}"
         )
         if exist and getEnvironment() == "RoboFont":
             from mojo.roboFont import AllFonts

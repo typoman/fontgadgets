@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="fontgadgets",
-    version="0.2.2.5",
+    version="0.2.2.6",
     description="A package to extend fontParts and defcon objects.",
     author="Bahman Eslami",
     author_email="contact@bahman.design",
