@@ -33,8 +33,12 @@ def decomposeCopy(glyph, layerName=None) -> defcon.Glyph:
         except KeyError:
             raise FontGadgetsError(f"Layer: `{layerName}` doesn't eixst!")
     else:
-        f = glyph.font.layers.defaultLayer
-    result = f.instantiateGlyphObject()
+        if glyph.font is None:
+            f = {}
+            result = defcon.Glyph()
+        else:
+            f = glyph.font.layers.defaultLayer
+            result = f.instantiateGlyphObject()
     result.name = glyph.name
     dstPen = result.getPointPen()
     decomposePen = DecomposePointPen(f, dstPen)

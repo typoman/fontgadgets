@@ -1,7 +1,6 @@
 import booleanOperations
 from fontgadgets.decorators import *
 
-
 @font_cached_method(
     "Glyph.ContoursChanged", "Glyph.ComponentsChanged", "Component.BaseGlyphChanged"
 )
@@ -12,8 +11,9 @@ def _flatten(glyph, returnNewGlyph=True, decompose=True) -> defcon.Glyph:
     before removing overlap.
     """
     if glyph.font is None:
-        raise AttributeError("Can't flatten an indiviual glyph without a parent font.")
-    result = glyph.font.layers.defaultLayer.instantiateGlyphObject()
+        result = defcon.Glyph()
+    else:
+        result = glyph.font.layers.defaultLayer.instantiateGlyphObject()
     result.name = glyph.name
     result.width = glyph.width
     if decompose:
@@ -32,8 +32,9 @@ def _flatten(glyph, returnNewGlyph=True, decompose=True) -> defcon.Glyph:
         glyph.clearContours()
         if decompose:
             glyph.clearComponents()
+        pointPen = glyph.getPointPen()
         for c in result:
-            glyph.appendContour(c)
+            c.drawPoints(pointPen)
     return glyph
 
 
