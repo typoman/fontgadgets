@@ -1,10 +1,11 @@
 from fontgadgets.decorators import *
 from fontTools.misc.roundTools import otRound
+from typing import Tuple, Union
 
 @font_method
 def scale(
     glyph: defcon.Glyph,
-    factor: float,
+    factor: Union[float, Tuple[float, float]],
     *,
     round_values: bool = True,
     contours: bool = True,
@@ -18,7 +19,8 @@ def scale(
     of the glyph by factor.
 
     Args:
-        factor (float): The scaling factor.
+        factor (float or tuple): The scaling factor. If a tuple is provided,
+            it will be interpreted as (x, y) for non-uniform scaling.
         round_values (bool, optional): Whether to round the scaled values.
             Defaults to True.
         contours (bool, optional): Whether to scale the contours.
@@ -32,34 +34,43 @@ def scale(
         width (bool, optional): Whether to scale the glyph width.
             Defaults to True.
     """
-    def scale_and_round(value: float) -> float:
-        v = value * factor
+    if isinstance(factor, (int, float)):
+        factor_x = factor_y = factor
+    else:
+        factor_x, factor_y = factor
+
+    def scale_and_round_x(value: float) -> float:
+        v = value * factor_x
+        return otRound(v) if round_values else v
+
+    def scale_and_round_y(value: float) -> float:
+        v = value * factor_y
         return otRound(v) if round_values else v
 
     if contours and len(glyph) > 0:
         for contour in glyph:
             for point in contour:
-                point.x = scale_and_round(point.x)
-                point.y = scale_and_round(point.y)
+                point.x = scale_and_round_x(point.x)
+                point.y = scale_and_round_y(point.y)
 
     if anchors:
         for anchor in glyph.anchors:
-            anchor.x = scale_and_round(anchor.x)
-            anchor.y = scale_and_round(anchor.y)
+            anchor.x = scale_and_round_x(anchor.x)
+            anchor.y = scale_and_round_y(anchor.y)
 
     if guidelines:
         for guideline in glyph.guidelines:
             if guideline.x is not None:
-                guideline.x = scale_and_round(guideline.x)
+                guideline.x = scale_and_round_x(guideline.x)
             if guideline.y is not None:
-                guideline.y = scale_and_round(guideline.y)
+                guideline.y = scale_and_round_y(guideline.y)
 
     if components:
         for c in glyph.components:
             xScale, xyScale, yxScale, yScale, xOffset, yOffset = c.transformation
-            xOffset = scale_and_round(xOffset)
-            yOffset = scale_and_round(yOffset)
+            xOffset = scale_and_round_x(xOffset)
+            yOffset = scale_and_round_y(yOffset)
             c.transformation = (xScale, xyScale, yxScale, yScale, xOffset, yOffset)
 
     if width:
-        glyph.width = scale_and_round(glyph.width)
+        glyph.width = scale_and_round_x(glyph.width)
