@@ -13,7 +13,7 @@ import functools
 # - dont' use RoboFont to find instances of the defcon to 
 # reset their representations. 
 
-VALID_DEFCON_NOTIFCATIONS = {
+VALID_DEFCON_NOTIFICATIONS = {
     "Glyph.Changed",
     "Glyph.BeginUndo",
     "Glyph.EndUndo",
