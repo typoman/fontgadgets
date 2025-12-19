@@ -1,7 +1,7 @@
 from utils import *
 from fontgadgets import patch
 
-# Test basic patch into a single class
+# test basic patch into a single class
 def test_basic_patch():
    class MyClass1:
        pass
@@ -13,8 +13,8 @@ def test_basic_patch():
    my_instance_1 = MyClass1()
    assert my_instance_1.Patched_method_1(5) == 10
 
-# Test patch into multiple classes
-def test_multiple_class_patch():
+# test patch into multiple classes
+def test_multipeclass_patch():
    class MyClass2:
        pass
    class MyClass3:
@@ -29,7 +29,7 @@ def test_multiple_class_patch():
    assert my_instance_2.Patched_method_2(3) == 13
    assert my_instance_3.Patched_method_2(7) == 17
 
-# Test method name conflict with existing method (ValueError in normal mode)
+# test method name conflict with existing method (valueerror in normal mode)
 def test_method_name_conflict():
    class MyClass5:
        def existing_method(self):
@@ -40,7 +40,7 @@ def test_method_name_conflict():
        def existing_method(self):  # Conflict with existing method
            return "Patched method"
 
-# Test non-conflicting patch
+# test non-conflicting patch
 def test_non_conflicting_patch():
    class MyClass5:
        def existing_method(self):
@@ -53,21 +53,21 @@ def test_non_conflicting_patch():
    my_instance_5 = MyClass5()
    assert my_instance_5.Patched_method_4() == "Non-conflicting Patched method"
 
-# Test no target classes provided (TypeError)
+# test no target classes provided (typeerror)
 def test_no_target_classes():
    with pytest.raises(TypeError):
        @patch.method() 
        def some_method(self):
            pass
 
-# Test empty list of target classes (TypeError)
+# test empty list of target classes (typeerror)
 def test_empty_target_classes():
    with pytest.raises(TypeError):
        @patch.method([])
        def some_method(self):
            pass
 
-# Test invalid target class (not a class) (TypeError)
+# test invalid target class (not a class) (typeerror)
 def test_invalid_target_class():
    my_variable = 10
    with pytest.raises(TypeError):
@@ -225,3 +225,106 @@ def test_subclass_patch():
 
     assert parent_instance.parent_method() == "Patched Parent"
     assert child_instance.parent_method() == "Patched Child"
+
+
+def test_property_getter_patch():
+    class MyClass:
+        def __init__(self):
+            self._value = 10
+        
+        @property
+        def value(self):
+            return self._value
+
+    @patch.property_getter(MyClass)
+    def value(self):
+        return original().value * 2
+
+    instance = MyClass()
+    assert instance.value == 20
+
+def test_property_setter_patch():
+    class MyClass:
+        def __init__(self):
+            self._value = 10
+        
+        @property
+        def value(self):
+            return self._value
+        
+        @value.setter
+        def value(self, val):
+            self._value = val
+
+    @patch.property_setter(MyClass)
+    def value(self, val):
+        original().value = val * 2
+
+    instance = MyClass()
+    instance.value = 5
+    assert instance.value == 10
+
+def test_property_getter_with_name():
+    class MyClass:
+        def __init__(self):
+            self._val = 100
+        
+        @property
+        def my_prop(self):
+            return self._val
+
+    @patch.property_getter(MyClass, property_name="my_prop")
+    def renamed_getter(self):
+        return original().my_prop + 50
+
+    instance = MyClass()
+    assert instance.my_prop == 150
+
+def test_property_setter_with_name():
+    class MyClass:
+        def __init__(self):
+            self._val = 100
+        
+        @property
+        def my_prop(self):
+            return self._val
+        
+        @my_prop.setter
+        def my_prop(self, val):
+            self._val = val
+
+    @patch.property_setter(MyClass, property_name="my_prop")
+    def renamed_setter(self, val):
+        original().my_prop = val - 20
+
+    instance = MyClass()
+    instance.my_prop = 50
+    assert instance.my_prop == 30
+
+def test_property_getter_conflict():
+    class MyClass:
+        @property
+        def prop(self):
+            return 1
+
+    with pytest.raises(ValueError):
+        @patch.property_getter(MyClass, override=False)
+        def prop(self):
+            return 2
+
+def test_property_setter_conflict():
+    class MyClass:
+        _val = 0
+        
+        @property
+        def prop(self):
+            return self._val
+        
+        @prop.setter
+        def prop(self, val):
+            self._val = val
+
+    with pytest.raises(ValueError):
+        @patch.property_setter(MyClass, override=False)
+        def prop(self, val):
+            self._val = val + 1

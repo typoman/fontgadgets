@@ -100,6 +100,38 @@ def subset(font) -> defcon.Font: # Note the return type hint
     return new_defcon_font
 ```
 When you call `my_rfont_object.subset()` on a `RFont` object, the returned `defcon.Font` will be automatically converted to a `fontParts.fontshell.RFont` object.
+
+### Extending Previous Implementations
+Sometimes you want to completely replace a method that already exists on a class, but still keep the old implementation around. Your new function receives an object named `original` that behaves exactly like the old method:
+
+```python
+from fontgadgets import patch
+
+@patch.method(MyClass)
+def draw(self, pen):
+    original().draw(pen) # call the existing implementation
+    # now do other things you want to add to the previous mechanism
+```
+
+If you only want to *add* a brand-new method and never touch anything that already exists, set `override=False`. Any conflict will raise an error (or just warn if you already set `patch.DEBUG=True`) so you never accidentally stomp on something.
+
+### Replacing or Extending Properties
+The same scenario works for properties. Swap out the getter, the setter, or both, and still reach the original implementation via `original()`:
+
+```python
+from fontgadgets import patch
+
+@patch.property_getter(MyClass, property_name='width')
+def _width_getter(self):
+    return round(original().width / 10) * 10
+
+@patch.property_setter(MyClass, property_name='width')
+def _width_setter(self, value):
+    original().width = value
+```
+
+Again, use `override=False` in the arguments of the decorator if you merely want to supply a getter or setter without replacing any existing property; or leave it (`True` is the default value) when you intend to replace one that is already there.
+
 ## Available Extensions
 FontGadgets already comes with pre-built extensions. Here are some of the available modules and the functionalities they add:
 - Features: Compile kerning and mark features, rename, and subset features.
