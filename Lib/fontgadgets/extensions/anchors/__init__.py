@@ -1,13 +1,15 @@
 from fontgadgets.log import logger
 import defcon
 from fontgadgets.decorators import font_cached_property
-from fontgadgets.extensions.point.__int__ import distance
 import fontgadgets.extensions.glyph.type
 from fontTools.misc.transform import Transform
 from fontgadgets import FontGadgetsError
 from functools import lru_cache
 import re
+import math
 
+def distance(p1: tuple, p2: tuple):
+    return math.hypot(p1[0] - p2[0], p1[1] - p2[1])
 
 """
 todo:
