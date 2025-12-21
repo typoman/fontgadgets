@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+	<dict>
+		<key>H</key>
+		<string>H_.glif</string>
+		<key>angled-extremes</key>
+		<string>angled-extremes.glif</string>
+		<key>arrow</key>
+		<string>arrow.glif</string>
+		<key>arrow2</key>
+		<string>arrow2.glif</string>
+		<key>broad-nib-vertical-stroke-with-chamfer</key>
+		<string>broad-nib-vertical-stroke-with-chamfer.glif</string>
+		<key>circle-hole</key>
+		<string>circle-hole.glif</string>
+		<key>cricle</key>
+		<string>cricle.glif</string>
+		<key>curve-overlap</key>
+		<string>curve-overlap.glif</string>
+		<key>double-loop</key>
+		<string>double-loop.glif</string>
+		<key>eight</key>
+		<string>eight.glif</string>
+		<key>nested-clusters</key>
+		<string>nested-clusters.glif</string>
+		<key>nested-clusters-2</key>
+		<string>nested-clusters-2.glif</string>
+		<key>nested-rect</key>
+		<string>nested-rect.glif</string>
+		<key>rect</key>
+		<string>rect.glif</string>
+	</dict>
+</plist>

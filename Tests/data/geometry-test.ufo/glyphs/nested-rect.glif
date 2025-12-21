@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="nested-rect" format="2">
+	<advance width="500"/>
+	<outline>
+		<contour>
+			<point x="41" y="140" type="line"/>
+			<point x="470" y="140" type="line"/>
+			<point x="470" y="529" type="line"/>
+			<point x="41" y="529" type="line"/>
+		</contour>
+		<contour>
+			<point x="111" y="205" type="line"/>
+			<point x="111" y="456" type="line"/>
+			<point x="398" y="456" type="line"/>
+			<point x="398" y="205" type="line"/>
+		</contour>
+	</outline>
+</glyph>

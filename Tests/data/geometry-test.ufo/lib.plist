@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+	<dict>
+		<key>com.defcon.sortDescriptor</key>
+		<array>
+			<dict>
+				<key>ascending</key>
+				<array>
+					<string>rect</string>
+					<string>cricle</string>
+					<string>H</string>
+					<string>circle-hole</string>
+					<string>eight</string>
+					<string>double-loop</string>
+					<string>arrow</string>
+					<string>arrow2</string>
+					<string>broad-nib-vertical-stroke-with-chamfer</string>
+					<string>angled-extremes</string>
+					<string>nested-clusters</string>
+					<string>nested-clusters-2</string>
+				</array>
+				<key>type</key>
+				<string>glyphList</string>
+			</dict>
+		</array>
+		<key>public.glyphOrder</key>
+		<array>
+			<string>rect</string>
+			<string>cricle</string>
+			<string>H</string>
+			<string>circle-hole</string>
+			<string>eight</string>
+			<string>double-loop</string>
+			<string>arrow</string>
+			<string>arrow2</string>
+			<string>broad-nib-vertical-stroke-with-chamfer</string>
+			<string>angled-extremes</string>
+			<string>nested-clusters</string>
+			<string>nested-clusters-2</string>
+			<string>nested-rect</string>
+			<string>curve-overlap</string>
+		</array>
+	</dict>
+</plist>
