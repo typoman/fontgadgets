@@ -43,10 +43,12 @@ def font_method(funct):
     return funct
 
 
-def font_property(funct):
+def font_property(funct): # getter
     """
     This is a decorator that makes it possible to convert self standing
-    functions to properties on defcon/fontParts objects.
+    functions to properties on defcon/fontParts objects. This will add a
+    new property getter for the funct, if you want to also add a setter
+    for the same property name use the decorator `font_property_setter`.
     """
     functInfo = fontgadgets.tools.getFontFunctionProperties(funct)
 
