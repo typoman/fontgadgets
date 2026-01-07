@@ -188,6 +188,23 @@ def distance(p1: Point, p2: Point):
 ON_CURVE = {"curve", "line"}
 
 
+def distanceSquared(p1: Point, p2: Point) -> float:
+    """
+    Calculate the squared Euclidean distance between two `defcon.Point` objects.
+    Useful for comparing distances without the overhead of square root.
+
+    Args:
+        p1 (Point): The first point.
+        p2 (Point): The second point.
+
+    Returns:
+        float: The squared Euclidean distance.
+    """
+    dx = p1.x - p2.x
+    dy = p1.y - p2.y
+    return dx * dx + dy * dy
+
+
 @font_cached_property("Contour.PointsChanged", "Contour.WindingDirectionChanged")
 def _contourFlatArea(contour):
     """
@@ -237,6 +254,10 @@ def angleDirection(p1: Tuple[float, float], p2: Tuple[float, float]) -> complex:
 TANGENT_TWIST_TOLLERANCE = pi * 1.2
 
 
+# TODO:
+# - in the first loop of init, check if sum of two non negative consecutive
+# turns becomes less than pi, then add them as the the twist canidates. right
+# now we're checking all the points for intersection which is too much.
 class ContourVectors:
     """
     A container for precomputed geometric vectors and properties of a contour.
@@ -273,6 +294,7 @@ class ContourVectors:
         "segments",
         "bounds",
         "cpoints",
+        "twists"
     )
 
     def __init__(self, contour):
@@ -287,6 +309,7 @@ class ContourVectors:
         self.bounds = None
         self.cpoints = {}
         self._reversed = False
+        self.twists = {}
         pts_list = list(self._contour)
         count = len(pts_list)
         for idx, p_curr in enumerate(pts_list):
@@ -356,6 +379,8 @@ class ContourVectors:
                 # it wokrs most of the time but not always.
                 i2 = id(p2)
                 i3 = id(p3)
+                self.twists[i2] = i3
+                self.twists[i3] = i2
                 tBeforeI2, tAfterI2 = self.tangents[i2]
                 tBeforeI3, tAfterI3 = self.tangents[i3]
                 self.tangents[i2] = tBeforeI2, tBeforeI3
@@ -465,13 +490,38 @@ TANGENT_TOLLERANCE = 0.15 * pi
 CORNER_TOLLERANCE = 0.25 * pi
 PARALLEL_TOLLERANCE = 1.85 * pi
 
+# TODO:
+# From old todo list but i'm not sure to implement them yet:
+# - if any line intersects with any other line (including the lines between twins),
+#  discard it. also discard it if it's a extreme twin and is crossing another line.
+#  this could be wrong as it discards one of the pairs on the circle.
+# - keep the twins from other glyphs on the font level so we can have an
+#  average twin size and then dicard the ones which are bigger/smaller than its
+#  half. This can have an issue, where we could drop the ink traps.
+
 
 class GlyphTwinPointsFinder:
     """
     A finder for twin points (matching points) within a glyph. A twin point is
     a point in the glyph that geometrically corresponds to another point,
     typically across filled areas and holes, based on tangent compatibility,
-    turn angles, and normal intersections.
+    turn angles, and normal. Here is the logic in summary:
+
+    Maps points to host contours. Determines search scope via winding
+    direction: filled areas target child holes or self; holes target parent.
+
+    Inside the search, it filters candidates by tangent alignment and
+    classifies them based on geometry: segments with parallel tangents,
+    which usually happen on extreme points on curves, require the twin point to
+    have its normal vector pointing towards the reference point; if one of the
+    tangents of the two points are similar and the other tangents are pointing
+    in opposite directions, then it could be a match; if normals intersect
+    within the bounding box and points are close to each other, it could also
+    be a match.
+
+    Before selecting the final match, it sortes the candiates based on distance
+    and checks if the line drawn between the match doesn't cross any segment 
+    on the contour.
 
     Args:
         glyph: The glyph object to analyze for twin points.
@@ -486,27 +536,24 @@ class GlyphTwinPointsFinder:
                 self._pointContours[id(p)] = contour
 
     def _searchTwin(self, reference_point, candidate_vectors, intersection_contours):
-        pid = id(reference_point)
-        ref_contour = self._pointContours[pid]
+        p1_id = id(reference_point)
+        ref_contour = self._pointContours[p1_id]
         ref_vectors = ref_contour.vectors
+        twists = ref_vectors.twists
         _abs = abs
         _isclose = isclose
         _pi = pi
 
         # accessing local variables is faster than accessing object properties (self.x)
-        p1_normal = ref_vectors.normals[pid]
-        p1_turn = ref_vectors.turns[pid]
+        p1_normal = ref_vectors.normals[p1_id]
+        p1_turn = ref_vectors.turns[p1_id]
         p1_turn_abs = _abs(p1_turn)
-        p_index = ref_vectors.indices[pid]
-        cp1 = ref_vectors.cpoints[pid]
-        p1_tangentBefore, p1_tangentAfter = ref_vectors.tangents[pid]
+        p1_index = ref_vectors.indices[p1_id]
+        p1_complex = ref_vectors.cpoints[p1_id]
+        p1_tangentBefore, p1_tangentAfter = ref_vectors.tangents[p1_id]
 
-        # exclude the reference point itself during this creation to avoid an
-        # 'if' inside the loop.
-
-        c_ids = [k for k in candidate_vectors.oncurves if k != pid]
-
-        # this is much faster to iterate over than looking up dict keys 100 times.
+        # exclude the reference point itself
+        c_ids = [k for k in candidate_vectors.oncurves if k != p1_id]
         c_pts = [candidate_vectors.oncurves[k] for k in c_ids]
         c_tans = [candidate_vectors.tangents[k] for k in c_ids]
         c_turns = [candidate_vectors.turns[k] for k in c_ids]
@@ -528,9 +575,10 @@ class GlyphTwinPointsFinder:
             p1_turn_abs, _pi, abs_tol=COLLINEAR_TOLLERANCE
         )
         p1TurningNegative = p1_turn < 0
+        isTwisted = p1_id in twists
 
-        for pt, (p2_tBefore, p2_tAfter), p2_turn, p2_normal, cp2 in zip(
-            c_pts, c_tans, c_turns, c_norms, c_cpts
+        for pt, (p2_tBefore, p2_tAfter), p2_turn, p2_normal, cp2, p2_id in zip(
+            c_pts, c_tans, c_turns, c_norms, c_cpts, c_ids
         ):
             p2_turn_abs = _abs(p2_turn)
             # fast check: tangent compatibility
@@ -546,14 +594,28 @@ class GlyphTwinPointsFinder:
                         turn_sum > PARALLEL_TOLLERANCE
                         and (p1_normal * p2_normal.conjugate()).real < 0
                     ):
-                        collinears.append(pt)
+                        corners.append(pt)
                 elif (p1TurningNegative or p2_turn < 0) and (
                     (p1_normal * p2_normal.conjugate()).real < 0
                 ):
-                    # negative (concave) trun and normals are pointing at each other
-                    corners.append(pt)
+                    # negative (concave) trun
+                    # use dot product to check if normals point towards
+                    # the other point within 0.9 radians.
+                    delta = cp2 - p1_complex
+                    dist = _abs(delta)
+                    if dist > 1e-9:
+                        u = delta / dist
+                        # dot product of (p1_normal . direction_to_p2) and (p2_normal . direction_to_p1)
+                        if (
+                            (p1_normal * u.conjugate()).real > 0.6 # cos(0.9) is approximately 0.6
+                            and (p2_normal * (-u).conjugate()).real > 0.6
+                        ):
+                            corners.append(pt)
+                elif isTwisted or p2_id in twists:
+                    # a sgement in-between twisted segments is not a corner
+                    continue
                 elif self._normalsIntersectInBounds(
-                    cp1,
+                    p1_complex,
                     cp2,
                     p1_normal,
                     p2_normal,
@@ -562,8 +624,6 @@ class GlyphTwinPointsFinder:
                     yMin,
                     yMax,
                 ):  # it's a corner or a tip of a stroke possibly
-                    if p1TurningNegative or p2_turn < 0:
-                        continue
                     if (turn_sum - _pi) < CORNER_TOLLERANCE:
                         # sum of the turns adds almost to 180 degrees
                         corners.append(pt)
@@ -572,12 +632,13 @@ class GlyphTwinPointsFinder:
                         chamfers.append(pt)
 
         # prioritize candidates
+        # for candids in [collinears, corners, chamfers]:
         for candids in [collinears, corners, chamfers]:
             if not candids:
                 continue
 
             # sort by distance
-            candids.sort(key=lambda p2: distance(reference_point, p2))
+            candids.sort(key=lambda p2: distanceSquared(reference_point, p2))
 
             for pt in candids:
                 # neighbor check logic
@@ -585,7 +646,7 @@ class GlyphTwinPointsFinder:
                     candidate_id = id(pt)
                     # we have to look up index here, but only for valid candidates
                     candidate_index = candidate_vectors.indices[candidate_id]
-                    diff = _abs(candidate_index - p_index)
+                    diff = _abs(candidate_index - p1_index)
                     count = len(candidate_vectors.oncurves)
                     if diff == 1 or diff == count - 1:
                         return pt
@@ -671,19 +732,13 @@ class GlyphTwinPointsFinder:
         targetPoint = None
         if found_candidates:
             # if multiple candidates (e.g. multiple holes), pick the closest one
-            found_candidates.sort(key=lambda p: distance(point, p))
+            found_candidates.sort(key=lambda p: distanceSquared(point, p))
             targetPoint = found_candidates[0]
         elif is_filled:
             targetPoint = self._searchTwin(point, referenceContour.vectors, siblings)
 
         if targetPoint:
             self._twins.setdefault(pid, []).append(targetPoint)
-
-            # establish the reciprocal relationship
-            tid = id(targetPoint)
-            if point not in self._twins.get(tid, []):
-                self._twins.setdefault(tid, []).append(point)
-
         return self._twins.get(pid, [])
 
     def _normalsIntersectInBounds(
