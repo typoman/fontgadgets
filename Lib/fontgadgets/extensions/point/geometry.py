@@ -8,7 +8,7 @@ from fontgadgets.decorators import (
 )
 from defcon import Point
 from typing import Tuple
-
+import defcon
 
 def _orientation(
     p: tuple[float, float], q: tuple[float, float], r: tuple[float, float]
@@ -294,7 +294,7 @@ class ContourVectors:
         "segments",
         "bounds",
         "cpoints",
-        "twists"
+        "twists",
     )
 
     def __init__(self, contour):
@@ -345,14 +345,13 @@ class ContourVectors:
                     self.normals[key] *= diagonal
         else:
             return
-        # return
 
         # HACK: in a case of p1, p2, p3, p4, if the segments of (p1, p2) and
         # (p3, p4) intersect, or in other words when segments are twisted, swap
         # the direction of shared tangents of p2 and p3 and recalculate the
         # turn and normals. this makes them similar to a case that they are not
-        # twisted. i do this because in some cases of overlap segments, find
-        # twins was failing and this hack fixed it.
+        # twisted. i do this because in some cases of overlap segments, search
+        # for counter points was failing and this hack fixed it.
         pts_list = [p for p in pts_list if p.segmentType in ON_CURVE]
         count = len(pts_list)
         j = 0
@@ -376,7 +375,7 @@ class ContourVectors:
             if getLinesIntersectionPoint(c1, c2, c3, c4) is not None:
                 # BUG:
                 # now we only check if segments intersect, however, on curves
-                # it wokrs most of the time but not always.
+                # it works most of the time but not always.
                 i2 = id(p2)
                 i3 = id(p3)
                 self.twists[i2] = i3
@@ -492,59 +491,56 @@ PARALLEL_TOLLERANCE = 1.85 * pi
 
 # TODO:
 # From old todo list but i'm not sure to implement them yet:
-# - if any line intersects with any other line (including the lines between twins),
-#  discard it. also discard it if it's a extreme twin and is crossing another line.
+# - if any line intersects with any other line (including the lines between counter points),
+#  discard it. also discard it if it's a extreme counter point and is crossing another line.
 #  this could be wrong as it discards one of the pairs on the circle.
-# - keep the twins from other glyphs on the font level so we can have an
-#  average twin size and then dicard the ones which are bigger/smaller than its
+# - keep the counter points from other glyphs on the font level so we can have an
+#  average counter point size and then dicard the ones which are bigger/smaller than its
 #  half. This can have an issue, where we could drop the ink traps.
 
 
-class GlyphTwinPointsFinder:
+class GlyphCounterPointsFinder:
     """
-    A finder for twin points (matching points) within a glyph. A twin point is
-    a point in the glyph that geometrically corresponds to another point,
-    typically across filled areas and holes, based on tangent compatibility,
-    turn angles, and normal. Here is the logic in summary:
+    A finder for counter points (matching points) within a glyph. A counter point is
+    a point in the glyph that geometrically corresponds to another point across
+    contours, typically pairing points between filled areas and their holes, or
+    between opposite edges of strokes.
 
-    Maps points to host contours. Determines search scope via winding
-    direction: filled areas target child holes or self; holes target parent.
+    Maps each point to its containing contour. Determines search scope via winding
+    direction: filled contours target their child holes or search within themselves;
+    hole contours target their parent filled contour.
 
     Inside the search, it filters candidates by tangent alignment and
-    classifies them based on geometry: segments with parallel tangents,
-    which usually happen on extreme points on curves, require the twin point to
+    classifies them based on geometry: segments with parallel tangents
+    (which usually occur at extreme points on curves) require the counter point to
     have its normal vector pointing towards the reference point; if one of the
     tangents of the two points are similar and the other tangents are pointing
     in opposite directions, then it could be a match; if normals intersect
     within the bounding box and points are close to each other, it could also
     be a match.
 
-    Before selecting the final match, it sortes the candiates based on distance
+    Before selecting the final match, it sorts the candidates based on distance
     and checks if the line drawn between the match doesn't cross any segment 
     on the contour.
-
-    Args:
-        glyph: The glyph object to analyze for twin points.
     """
 
     def __init__(self, glyph) -> None:
-        self._twins = {}
+        self.counterPoints = {}
         self._glyph = glyph
-        self._pointContours = {}
+        self._pointOnContours = {}
         for contour in glyph:
             for p in contour.vectors.oncurves.values():
-                self._pointContours[id(p)] = contour
+                self._pointOnContours[id(p)] = contour
 
-    def _searchTwin(self, reference_point, candidate_vectors, intersection_contours):
+    def _findCounterPoints(self, reference_point, candidate_vectors, intersection_contours):
         p1_id = id(reference_point)
-        ref_contour = self._pointContours[p1_id]
+        ref_contour = self._pointOnContours[p1_id]
         ref_vectors = ref_contour.vectors
         twists = ref_vectors.twists
         _abs = abs
         _isclose = isclose
         _pi = pi
 
-        # accessing local variables is faster than accessing object properties (self.x)
         p1_normal = ref_vectors.normals[p1_id]
         p1_turn = ref_vectors.turns[p1_id]
         p1_turn_abs = _abs(p1_turn)
@@ -560,7 +556,6 @@ class GlyphTwinPointsFinder:
         c_norms = [candidate_vectors.normals[k] for k in c_ids]
         c_cpts = [candidate_vectors.cpoints[k] for k in c_ids]
 
-        # root bounds logic (kept same as your code)
         root_contour = ref_contour.cluster.root
         if root_contour.vectors.bounds:
             xMin, yMin, xMax, yMax = root_contour.vectors.bounds
@@ -607,9 +602,10 @@ class GlyphTwinPointsFinder:
                         u = delta / dist
                         # dot product of (p1_normal . direction_to_p2) and (p2_normal . direction_to_p1)
                         if (
-                            (p1_normal * u.conjugate()).real > 0.6 # cos(0.9) is approximately 0.6
-                            and (p2_normal * (-u).conjugate()).real > 0.6
-                        ):
+                            p1_normal * u.conjugate()
+                        ).real > 0.6 and (  # cos(0.9) is approximately 0.6
+                            p2_normal * (-u).conjugate()
+                        ).real > 0.6:
                             corners.append(pt)
                 elif isTwisted or p2_id in twists:
                     # a sgement in-between twisted segments is not a corner
@@ -632,7 +628,6 @@ class GlyphTwinPointsFinder:
                         chamfers.append(pt)
 
         # prioritize candidates
-        # for candids in [collinears, corners, chamfers]:
         for candids in [collinears, corners, chamfers]:
             if not candids:
                 continue
@@ -668,12 +663,12 @@ class GlyphTwinPointsFinder:
 
         return None
 
-    def getTwinPointForPoint(self, point):
+    def getCounterPoints(self, point):
         pid = id(point)
-        if pid in self._twins:
-            return self._twins[pid]
+        if pid in self.counterPoints:
+            return self.counterPoints[pid]
 
-        referenceContour = self._pointContours.get(pid)
+        referenceContour = self._pointOnContours.get(pid)
         if referenceContour is None:
             return []
 
@@ -725,7 +720,7 @@ class GlyphTwinPointsFinder:
             # combine siblings and target for intersection checking.
             # use set to avoid duplication if target is self or a sibling.
             obstacles = list(set(siblings + [target_contour]))
-            match = self._searchTwin(point, target_contour.vectors, obstacles)
+            match = self._findCounterPoints(point, target_contour.vectors, obstacles)
             if match:
                 found_candidates.append(match)
 
@@ -735,11 +730,11 @@ class GlyphTwinPointsFinder:
             found_candidates.sort(key=lambda p: distanceSquared(point, p))
             targetPoint = found_candidates[0]
         elif is_filled:
-            targetPoint = self._searchTwin(point, referenceContour.vectors, siblings)
+            targetPoint = self._findCounterPoints(point, referenceContour.vectors, siblings)
 
         if targetPoint:
-            self._twins.setdefault(pid, []).append(targetPoint)
-        return self._twins.get(pid, [])
+            self.counterPoints.setdefault(pid, []).append(targetPoint)
+        return self.counterPoints.get(pid, [])
 
     def _normalsIntersectInBounds(
         self, cp1, cp2, p1_normal, p2_normal, xMin, xMax, yMin, yMax
@@ -754,11 +749,27 @@ class GlyphTwinPointsFinder:
 
 
 @font_cached_property("Contour.PointsChanged", "Contour.WindingDirectionChanged")
-def _twinFinder(glyph):
-    return GlyphTwinPointsFinder(glyph)
+def _counterPointFinder(glyph):
+    return GlyphCounterPointsFinder(glyph)
 
 
 @font_method
-def getTwinPointForPoint(glyph, point):
-    tf = glyph._twinFinder
-    return tf.getTwinPointForPoint(point)
+def getCounterPoints(glyph, point: defcon.Point) -> list[defcon.Point]:
+    """
+    Find counter points for a given point in the glyph.
+
+    A counter point is a geometrically corresponding point across contours,
+    typically pairing points between filled areas and their holes, or between
+    opposite edges of strokes. This method searches for matching points based
+    on geometric properties like tangent alignment, normal vectors, and
+    intersection constraints.
+
+    Args:
+        point (defcon.Point): The reference point to find counter points for.
+
+    Returns:
+        list[defcon.Point]: A list of counter points found for the given point.
+        Returns an empty list if no counter points are found.
+    """
+    tf = glyph._counterPointFinder
+    return tf.getCounterPoints(point)
