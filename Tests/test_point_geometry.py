@@ -1,7 +1,7 @@
 import pytest
 import defcon
 from pathlib import Path
-from fontgadgets.extensions.point.geometry import getTwinPointForPoint
+from fontgadgets.extensions.point.geometry import getCounterPoints
 
 GLYPH_NAMES = [
     "rect",
@@ -82,7 +82,7 @@ EXPECTED_CLUSTERS = {
     "curve-overlap": [ { 'contourIndex': 0, 'subClusters': [], } ],
 }
 
-EXPECTED_TWINS = {
+EXPECTED_COUNTERS = {
     "rect": {(0, 0): [(0, 1)], (0, 1): [(0, 0)], (0, 2): [(0, 3)], (0, 3): [(0, 2)]},
     "curve-overlap": {
         (0, 0): [
@@ -309,7 +309,7 @@ def test_contour_clusters_structure(geometry_test_font, glyph_name):
 
 
 @pytest.mark.parametrize("glyph_name", GLYPH_NAMES)
-def test_get_twin_point_for_point(geometry_test_font, glyph_name):
+def test_get_counter_point_for_point(geometry_test_font, glyph_name):
     if glyph_name not in geometry_test_font:
         pytest.fail(f"Glyph '{glyph_name}' not found in the test font.")
     glyph = geometry_test_font[glyph_name]
@@ -317,16 +317,16 @@ def test_get_twin_point_for_point(geometry_test_font, glyph_name):
     for c_idx, contour in enumerate(glyph):
         for p_idx, point in enumerate(contour):
             point_map[id(point)] = (c_idx, p_idx)
-    actual_twins = {}
+    actual_counters = {}
     for c_idx, contour in enumerate(glyph):
         for p_idx, point in enumerate(contour):
-            twins = getTwinPointForPoint(glyph, point)
-            if twins:
-                twin_ids = []
-                for twin in twins:
-                    if id(twin) in point_map:
-                        twin_ids.append(point_map[id(twin)])
-                if twin_ids:
-                    actual_twins[c_idx, p_idx] = sorted(twin_ids)
-    expected = EXPECTED_TWINS[glyph_name]
-    assert actual_twins == expected
+            counterPoints = getCounterPoints(glyph, point)
+            if counterPoints:
+                counter_ids = []
+                for counter in counterPoints:
+                    if id(counter) in point_map:
+                        counter_ids.append(point_map[id(counter)])
+                if counter_ids:
+                    actual_counters[c_idx, p_idx] = sorted(counter_ids)
+    expected = EXPECTED_COUNTERS[glyph_name]
+    assert actual_counters == expected
