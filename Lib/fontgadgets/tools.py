@@ -1,3 +1,4 @@
+import re
 import types
 import fontParts.fontshell
 import defcon
@@ -10,7 +11,7 @@ from typing import Type, List, Tuple, Union
 import functools
 
 # TODO: 
-# - dont' use RoboFont to find instances of the defcon to 
+# - dont use RoboFont to find instances of the defcon to 
 # reset their representations. 
 
 VALID_DEFCON_NOTIFICATIONS = {
@@ -190,6 +191,10 @@ def _destroyRepresentationsForNotification(self, notification):
     try:
         p = self.getParent()
     except NotImplementedError:
+        return
+    except Exception as e:
+        warn(f'{type(self)}.`_destroyRepresentationsForNotification` got'
+             f'interrupted by this error:\n{e}')
         return
     p._destroyRepresentationsForNotification(notification)
 
